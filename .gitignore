@@ -1,0 +1,19 @@
+# Documentación local de fases
+out/
+
+# Build de .NET / Visual Studio
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userprefs
+[Dd]ebug/
+[Rr]elease/
+packages/
+TestResults/
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
