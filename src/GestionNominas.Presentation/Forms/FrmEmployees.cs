@@ -70,6 +70,8 @@ namespace GestionNominas.Presentation.Forms
                 AllowUserToAddRows = false
             };
             dgvEmployees.SelectionChanged += DgvEmployees_SelectionChanged;
+            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            dgvEmployees.DataBindingComplete += (s, e) => ClearForm();
 
             Controls.Add(dgvEmployees);
             Controls.Add(panelForm);
@@ -151,7 +153,8 @@ namespace GestionNominas.Presentation.Forms
         {
             if (string.IsNullOrWhiteSpace(txtIdEmployee.Text)) return;
 
-            var confirm = MessageBox.Show($"¿Desea eliminar el empleado seleccionado?", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var confirm = MessageBox.Show("¿Desea eliminar el empleado seleccionado?\n\n" +
+                "ATENCIÓN: también se eliminarán todos sus puestos y todas sus nóminas registradas.", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (confirm == DialogResult.Yes)
             {
                 try

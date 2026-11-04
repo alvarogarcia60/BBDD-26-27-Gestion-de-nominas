@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using GestionNominas.Persistence;
+using GestionNominas.Domain.Services;
 
 namespace GestionNominas.Presentation.Forms
 {
@@ -23,11 +23,11 @@ namespace GestionNominas.Presentation.Forms
             lblStatus.Text = "Conectando al servidor MySQL...";
             lblStatus.ForeColor = Color.Black;
 
-            bool isConnected = DBBroker.GetInstance().TestConnection(out string errorMessage);
+            bool isConnected = DatabaseService.TestConnection(out string errorMessage);
 
             if (isConnected)
             {
-                lblStatus.Text = $"✔ Conectado exitosamente a la base de datos MySQL ({DatabaseConfig.Database}) en {DatabaseConfig.Server}:{DatabaseConfig.Port}";
+                lblStatus.Text = $"✔ Conectado exitosamente a la base de datos MySQL ({DatabaseService.ShortDescription})";
                 lblStatus.ForeColor = Color.DarkGreen;
             }
             else
@@ -37,10 +37,7 @@ namespace GestionNominas.Presentation.Forms
 
                 MessageBox.Show(
                     $"No se pudo conectar a la base de datos MySQL:\n\n{errorMessage}\n\n" +
-                    $"Servidor: {DatabaseConfig.Server}\n" +
-                    $"Puerto: {DatabaseConfig.Port}\n" +
-                    $"Base de datos: {DatabaseConfig.Database}\n" +
-                    $"Usuario: {DatabaseConfig.UserId}\n\n" +
+                    $"{DatabaseService.ConnectionDescription}\n\n" +
                     "Asegúrese de que el servicio MySQL esté iniciado y de haber ejecutado el script SQL de creación de la base de datos.",
                     "Aviso de Conexión a Base de Datos",
                     MessageBoxButtons.OK,

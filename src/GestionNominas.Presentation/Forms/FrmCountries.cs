@@ -17,6 +17,9 @@ namespace GestionNominas.Presentation.Forms
         private Button btnDelete = null!;
         private Button btnClear = null!;
 
+        /// <summary>Código del país seleccionado para edición (null = alta de un país nuevo).</summary>
+        private string? _editingId;
+
         public FrmCountries()
         {
             InitializeComponentManual();
@@ -38,18 +41,31 @@ namespace GestionNominas.Presentation.Forms
             };
 
             var lblId = new Label { Text = "Código País (3 letras):", Location = new Point(20, 20), AutoSize = true };
-            txtIdCountry = new TextBox { Location = new Point(160, 17), Width = 80, MaxLength = 3 };
+            // El código no se escribe a mano: se genera siempre a partir del nombre (regla del enunciado)
+            txtIdCountry = new TextBox { Location = new Point(160, 17), Width = 80, MaxLength = 3, ReadOnly = true, PlaceholderText = "Auto" };
 
-            btnAutoCode = new Button { Text = "Sugerir Código", Location = new Point(250, 16), Width = 110, Height = 25 };
+            btnAutoCode = new Button { Text = "Ver Código", Location = new Point(250, 16), Width = 110, Height = 25 };
             btnAutoCode.Click += (s, e) =>
             {
-                if (!string.IsNullOrWhiteSpace(txtName.Text))
+                if (_editingId != null)
+                {
+                    MessageBox.Show("El código de un país existente no se puede modificar.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtName.Text))
+                {
+                    MessageBox.Show("Introduzca primero el nombre del país para ver su código.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                try
                 {
                     txtIdCountry.Text = CountryCodeGenerator.GenerateCode(txtName.Text);
                 }
-                else
+                catch (Exception ex)
                 {
-                    MessageBox.Show("Introduzca primero el nombre del país para sugerir el código.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"No se pudo calcular el código: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -57,7 +73,7 @@ namespace GestionNominas.Presentation.Forms
             txtName = new TextBox { Location = new Point(160, 52), Width = 280, MaxLength = 120 };
 
             var lblTax = new Label { Text = "Base Impositiva (%):", Location = new Point(20, 90), AutoSize = true };
-            numTaxBase = new NumericUpDown { Location = new Point(160, 88), Width = 100, DecimalPlaces = 2, Minimum = 0, Maximum = 100, Value = 15.00m };
+            numTaxBase = new NumericUpDown { Location = new Point(160, 88), Width = 100, DecimalPlaces = 2, Minimum = 0, Maximum = 99.99m, Value = 15.00m };
 
             btnSave = new Button { Text = "Guardar", Location = new Point(480, 20), Width = 100, Height = 32, BackColor = Color.SteelBlue, ForeColor = Color.White };
             btnSave.Click += BtnSave_Click;
@@ -80,6 +96,8 @@ namespace GestionNominas.Presentation.Forms
                 AllowUserToAddRows = false
             };
             dgvCountries.SelectionChanged += DgvCountries_SelectionChanged;
+            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            dgvCountries.DataBindingComplete += (s, e) => ClearForm();
 
             Controls.Add(dgvCountries);
             Controls.Add(panelForm);
@@ -103,8 +121,8 @@ namespace GestionNominas.Presentation.Forms
         {
             if (dgvCountries.SelectedRows.Count > 0 && dgvCountries.SelectedRows[0].DataBoundItem is Country c)
             {
+                _editingId = c.IdCountry;
                 txtIdCountry.Text = c.IdCountry;
-                txtIdCountry.ReadOnly = true;
                 txtName.Text = c.Name;
                 numTaxBase.Value = c.TaxBase;
             }
@@ -114,21 +132,24 @@ namespace GestionNominas.Presentation.Forms
         {
             try
             {
-                string id = txtIdCountry.Text.Trim().ToUpper();
                 string name = txtName.Text.Trim();
                 decimal tax = numTaxBase.Value;
 
-                var country = new Country(id, name, tax);
-                bool exists = Country.Exists(id);
-
                 bool success;
-                if (exists && txtIdCountry.ReadOnly)
+                if (_editingId != null)
                 {
-                    success = country.Update();
+                    // Edición: se conserva el código existente (clave primaria)
+                    success = new Country(_editingId, name, tax).Update();
                 }
                 else
                 {
+                    // Alta: código vacío para que el dominio lo genere según la regla del enunciado
+                    var country = new Country(string.Empty, name, tax);
                     success = country.Insert();
+                    if (success)
+                    {
+                        MessageBox.Show($"Se ha asignado el código {country.IdCountry} al país {country.Name}.", "Código generado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                 }
 
                 if (success)
@@ -146,14 +167,18 @@ namespace GestionNominas.Presentation.Forms
 
         private void BtnDelete_Click(object? sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtIdCountry.Text)) return;
+            if (_editingId == null)
+            {
+                MessageBox.Show("Seleccione en la lista el país que desea eliminar.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
-            var confirm = MessageBox.Show($"¿Desea eliminar el país {txtIdCountry.Text}?", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var confirm = MessageBox.Show($"¿Desea eliminar el país {_editingId}?", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (confirm == DialogResult.Yes)
             {
                 try
                 {
-                    var country = new Country { IdCountry = txtIdCountry.Text.Trim() };
+                    var country = new Country { IdCountry = _editingId };
                     if (country.Delete())
                     {
                         MessageBox.Show("País eliminado.", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -170,8 +195,8 @@ namespace GestionNominas.Presentation.Forms
 
         private void ClearForm()
         {
+            _editingId = null;
             txtIdCountry.Clear();
-            txtIdCountry.ReadOnly = false;
             txtName.Clear();
             numTaxBase.Value = 15.00m;
             dgvCountries.ClearSelection();

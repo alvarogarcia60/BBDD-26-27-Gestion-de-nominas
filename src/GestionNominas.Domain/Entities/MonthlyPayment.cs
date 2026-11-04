@@ -218,17 +218,22 @@ namespace GestionNominas.Domain.Entities
 
             if (officeId.HasValue && officeId.Value > 0)
             {
-                sql = @"SELECT DISTINCT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth, 
-                                        m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                                        e.empName, e.empCountry, e.empIBAN,
-                                        c.couName, c.couTaxBase
+                // La nómina se asigna a la oficina en la que el empleado trabajó más días
+                // durante ese mes (la misma regla que usan los informes de gasto), de modo
+                // que no aparezcan empleados que estuvieron en la oficina en otros periodos.
+                sql = $@"SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth,
+                                m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
+                                e.empName, e.empCountry, e.empIBAN,
+                                c.couName, c.couTaxBase
                         FROM MonthlyPayments m
                         INNER JOIN Employees e ON m.payEmployee = e.idEmployee
                         INNER JOIN Countries c ON e.empCountry = c.idCountry
-                        INNER JOIN Positions p ON p.posEmployee = e.idEmployee
-                        WHERE m.payYear = @year AND m.payMonth = @month AND p.posOffice = @officeId
+                        INNER JOIN ({PredominantOfficeSql}) po ON po.posEmployee = m.payEmployee
+                        WHERE m.payYear = @year AND m.payMonth = @month AND po.posOffice = @officeId
                         ORDER BY m.paySalaryGross DESC;";
                 parameters.Add("@officeId", officeId.Value);
+                parameters.Add("@firstDay", new DateTime(year, month, 1));
+                parameters.Add("@lastDay", new DateTime(year, month, DateTime.DaysInMonth(year, month)));
             }
             else
             {
@@ -281,6 +286,43 @@ namespace GestionNominas.Domain.Entities
                 list.Add(MapFromRow(row));
             }
             return list;
+        }
+
+        /// <summary>
+        /// Subconsulta SQL que devuelve, para cada empleado activo entre @firstDay y @lastDay,
+        /// una única fila con la oficina en la que trabajó más días en ese intervalo
+        /// (en caso de empate, la del puesto más reciente). Columnas: posEmployee, posOffice.
+        /// </summary>
+        internal const string PredominantOfficeSql = @"
+            SELECT ranked.posEmployee, ranked.posOffice
+            FROM (
+                SELECT p.posEmployee, p.posOffice,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY p.posEmployee
+                           ORDER BY DATEDIFF(LEAST(COALESCE(p.posEndDate, @lastDay), @lastDay),
+                                             GREATEST(p.posStartDate, @firstDay)) DESC,
+                                    p.posStartDate DESC
+                       ) AS rn
+                FROM Positions p
+                WHERE p.posStartDate <= @lastDay
+                  AND (p.posEndDate IS NULL OR p.posEndDate >= @firstDay)
+            ) AS ranked
+            WHERE ranked.rn = 1";
+
+        /// <summary>
+        /// Elimina en una única sentencia (atómica) todas las nóminas de un año y mes.
+        /// </summary>
+        /// <returns>Número de nóminas eliminadas.</returns>
+        public static int DeleteByPeriod(int year, int month)
+        {
+            string sql = "DELETE FROM MonthlyPayments WHERE payYear = @year AND payMonth = @month;";
+            var parameters = new Dictionary<string, object?>
+            {
+                { "@year", year },
+                { "@month", month }
+            };
+
+            return DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
         }
 
         /// <summary>
@@ -365,9 +407,9 @@ namespace GestionNominas.Domain.Entities
                 throw new ArgumentOutOfRangeException(nameof(SalaryNet), "El salario neto no puede ser negativo.");
             }
 
-            if (BonusApplied < 0 || BonusApplied > 100)
+            if (BonusApplied < 0 || BonusApplied > 999.99m)
             {
-                throw new ArgumentOutOfRangeException(nameof(BonusApplied), "El bonus aplicado debe estar entre 0.00% y 100.00%.");
+                throw new ArgumentOutOfRangeException(nameof(BonusApplied), "El bonus aplicado debe estar entre 0.00% y 999.99%.");
             }
         }
 

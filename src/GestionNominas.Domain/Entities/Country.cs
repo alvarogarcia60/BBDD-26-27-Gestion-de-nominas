@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
+using GestionNominas.Domain.Services;
 using GestionNominas.Persistence;
 
 namespace GestionNominas.Domain.Entities
@@ -190,7 +192,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public void Validate()
         {
-            if (string.IsNullOrWhiteSpace(IdCountry) || IdCountry.Trim().Length != 3)
+            if (string.IsNullOrWhiteSpace(IdCountry) || IdCountry.Trim().Length != 3 || !IdCountry.Trim().All(char.IsLetter))
             {
                 throw new ArgumentException("El código del país debe tener exactamente 3 caracteres alfabéticos.");
             }
@@ -200,9 +202,9 @@ namespace GestionNominas.Domain.Entities
                 throw new ArgumentException("El nombre del país no puede estar vacío.");
             }
 
-            if (TaxBase < 0 || TaxBase > 100)
+            if (TaxBase < 0 || TaxBase > 99.99m)
             {
-                throw new ArgumentOutOfRangeException(nameof(TaxBase), "La base impositiva debe estar comprendida entre 0.00% y 100.00%.");
+                throw new ArgumentOutOfRangeException(nameof(TaxBase), "La base impositiva debe estar comprendida entre 0.00% y 99.99%.");
             }
         }
 

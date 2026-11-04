@@ -230,30 +230,27 @@ namespace GestionNominas.Presentation.Forms
             int year  = (int)numYear.Value;
             int month = cmbMonth.SelectedIndex + 1;
 
-            var payments = MonthlyPayment.ReadByPeriod(year, month);
-            if (payments.Count == 0)
-            {
-                MessageBox.Show(
-                    $"No hay nóminas registradas para el periodo {year}-{month:D2}.",
-                    "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var confirm = MessageBox.Show(
-                $"¿Está seguro de que desea ELIMINAR las {payments.Count} nóminas del periodo {year}-{month:D2}?\n\n" +
-                "Esta acción no se puede deshacer.",
-                "Confirmar Eliminación",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-            if (confirm != DialogResult.Yes) return;
-
             try
             {
-                int deleted = 0;
-                foreach (var p in payments)
+                var payments = MonthlyPayment.ReadByPeriod(year, month);
+                if (payments.Count == 0)
                 {
-                    if (p.Delete()) deleted++;
+                    MessageBox.Show(
+                        $"No hay nóminas registradas para el periodo {year}-{month:D2}.",
+                        "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
                 }
+
+                var confirm = MessageBox.Show(
+                    $"¿Está seguro de que desea ELIMINAR las {payments.Count} nóminas del periodo {year}-{month:D2}?\n\n" +
+                    "Esta acción no se puede deshacer.",
+                    "Confirmar Eliminación",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (confirm != DialogResult.Yes) return;
+
+                // Borrado en una única sentencia: o se eliminan todas o ninguna
+                int deleted = MonthlyPayment.DeleteByPeriod(year, month);
 
                 MessageBox.Show(
                     $"{deleted} nóminas eliminadas del periodo {year}-{month:D2}.",

@@ -244,9 +244,9 @@ namespace GestionNominas.Domain.Entities
                 throw new ArgumentException("La dirección de la oficina no puede estar vacía.");
             }
 
-            if (ThreeYearBonus < 0 || ThreeYearBonus > 100)
+            if (ThreeYearBonus < 0 || ThreeYearBonus > 99.99m)
             {
-                throw new ArgumentOutOfRangeException(nameof(ThreeYearBonus), "El porcentaje de bonus por trienio debe estar entre 0.00% y 100.00%.");
+                throw new ArgumentOutOfRangeException(nameof(ThreeYearBonus), "El porcentaje de bonus por trienio debe estar entre 0.00% y 99.99%.");
             }
         }
 

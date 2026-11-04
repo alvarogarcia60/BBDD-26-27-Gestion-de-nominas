@@ -91,6 +91,8 @@ namespace GestionNominas.Presentation.Forms
                 AllowUserToAddRows = false
             };
             dgvPositions.SelectionChanged += DgvPositions_SelectionChanged;
+            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            dgvPositions.DataBindingComplete += (s, e) => ClearForm();
 
             Controls.Add(dgvPositions);
             Controls.Add(panelForm);

@@ -357,9 +357,9 @@ namespace GestionNominas.Domain.Entities
                     throw new ArgumentException("La fecha de fin no puede ser anterior a la fecha de inicio.");
                 }
 
-                if (EndDate.Value > DateTime.Today)
+                if (EndDate.Value >= DateTime.Today)
                 {
-                    throw new ArgumentException("Si la fecha de fin tiene valor, debe ser una fecha en el pasado o presente.");
+                    throw new ArgumentException("Si la fecha de fin tiene valor, debe ser una fecha en el pasado (anterior a hoy).");
                 }
             }
 

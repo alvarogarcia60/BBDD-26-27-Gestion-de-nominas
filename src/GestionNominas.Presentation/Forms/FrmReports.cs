@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using GestionNominas.Domain.Entities;
-using GestionNominas.Persistence;
+using GestionNominas.Domain.Services;
 
 namespace GestionNominas.Presentation.Forms
 {
@@ -92,14 +92,14 @@ namespace GestionNominas.Presentation.Forms
             numR1Year = new NumericUpDown
             {
                 Location = new Point(50, 15), Width = 80,
-                Minimum = 2000, Maximum = 2100, Value = DateTime.Today.Year
+                Minimum = 2000, Maximum = 2100, Value = DateTime.Today.AddMonths(-1).Year
             };
             pnl.Controls.Add(numR1Year);
 
             pnl.Controls.Add(new Label { Text = "Mes:", Location = new Point(145, 18), AutoSize = true });
             cmbR1Month = new ComboBox { Location = new Point(182, 15), Width = 105, DropDownStyle = ComboBoxStyle.DropDownList };
             for (int i = 1; i <= 12; i++) cmbR1Month.Items.Add(i.ToString("D2"));
-            cmbR1Month.SelectedIndex = Math.Max(0, DateTime.Today.Month - 2);
+            cmbR1Month.SelectedIndex = DateTime.Today.AddMonths(-1).Month - 1;
             pnl.Controls.Add(cmbR1Month);
 
             pnl.Controls.Add(new Label { Text = "Oficina:", Location = new Point(300, 18), AutoSize = true });
@@ -189,14 +189,14 @@ namespace GestionNominas.Presentation.Forms
             numR4Year = new NumericUpDown
             {
                 Location = new Point(50, 15), Width = 80,
-                Minimum = 2000, Maximum = 2100, Value = DateTime.Today.Year
+                Minimum = 2000, Maximum = 2100, Value = DateTime.Today.AddMonths(-1).Year
             };
             pnl.Controls.Add(numR4Year);
 
             pnl.Controls.Add(new Label { Text = "Mes:", Location = new Point(145, 18), AutoSize = true });
             cmbR4Month = new ComboBox { Location = new Point(182, 15), Width = 90, DropDownStyle = ComboBoxStyle.DropDownList };
             for (int i = 1; i <= 12; i++) cmbR4Month.Items.Add(i.ToString("D2"));
-            cmbR4Month.SelectedIndex = Math.Max(0, DateTime.Today.Month - 2);
+            cmbR4Month.SelectedIndex = DateTime.Today.AddMonths(-1).Month - 1;
             pnl.Controls.Add(cmbR4Month);
 
             btnR4Load = new Button
@@ -375,56 +375,14 @@ namespace GestionNominas.Presentation.Forms
         }
 
         // ────────────────────────────────────────────────────────────────────
-        // Informe 3: Empleados de cada sede con trienios HISTÓRICOS acumulados
-        //
-        // El enunciado exige trienios acumulados de todos los puestos del empleado
-        // (no solo el puesto actual). La consulta suma días de todos los puestos
-        // de cada empleado hasta hoy, y divide entre 1095.
+        // Informe 3: Empleados de cada sede con los trienios acumulados hasta hoy
         // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport3()
         {
             try
             {
-                // Trienios consolidados = FLOOR( total_días_históricos / 1095 )
-                // total_días_históricos = SUMA de (DATEDIFF entre inicio y fin efectivo) de TODOS los puestos del empleado.
-                //
-                // Este cálculo se hace agrupando por empleado-sede (última oficina del empleado por fecha de inicio).
-                // Se usa una subconsulta que calcula los días históricos totales por empleado.
-                string sql = @"
-                    SELECT
-                        o.idOffice                                                          AS 'ID Sede',
-                        CONCAT(o.offCity, ' (', c_off.idCountry, ')')                       AS 'Sede',
-                        e.idEmployee                                                        AS 'ID Empleado',
-                        e.empName                                                           AS 'Empleado',
-                        p_curr.posName                                                      AS 'Puesto Actual',
-                        hist.historicalDays                                                 AS 'Días Históricos',
-                        FLOOR(hist.historicalDays / 1095)                                  AS 'Trienios Totales',
-                        ROUND(FLOOR(hist.historicalDays / 1095) * o.offThreeYearBonus, 2)  AS 'Bonus Trienio (%)'
-                    FROM Employees e
-                    /* Puesto actual: el puesto activo más reciente del empleado */
-                    INNER JOIN Positions p_curr
-                        ON  p_curr.posEmployee = e.idEmployee
-                        AND p_curr.posStartDate = (
-                                SELECT MAX(p2.posStartDate)
-                                FROM   Positions p2
-                                WHERE  p2.posEmployee = e.idEmployee
-                                AND    p2.posEndDate IS NULL
-                            )
-                    INNER JOIN Offices o        ON p_curr.posOffice = o.idOffice
-                    INNER JOIN Countries c_off  ON o.offCountry    = c_off.idCountry
-                    /* Subconsulta de días históricos totales por empleado */
-                    INNER JOIN (
-                        SELECT
-                            posEmployee,
-                            SUM(DATEDIFF(COALESCE(posEndDate, CURDATE()), posStartDate) + 1) AS historicalDays
-                        FROM Positions
-                        GROUP BY posEmployee
-                    ) AS hist ON hist.posEmployee = e.idEmployee
-                    ORDER BY o.offCity, e.empName;";
-
-                DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
-                dgvR3.DataSource = dt;
+                dgvR3.DataSource = ReportService.GetEmployeesWithTrieniosByOffice();
             }
             catch (Exception ex)
             {
@@ -434,10 +392,6 @@ namespace GestionNominas.Presentation.Forms
 
         // ────────────────────────────────────────────────────────────────────
         // Informe 4: Gasto total en nóminas de cada oficina en un mes
-        //
-        // Usa la tabla MonthlyPayments + la oficina del puesto ACTIVO del empleado
-        // durante ese mes (puesto cuyo intervalo [posStartDate, posEndDate] solapa
-        // el periodo seleccionado), evitando duplicados por múltiples puestos.
         // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport4()
@@ -447,75 +401,17 @@ namespace GestionNominas.Presentation.Forms
                 int year  = (int)numR4Year.Value;
                 int month = cmbR4Month.SelectedIndex + 1;
 
-                // Para cada nómina, encontramos la oficina del puesto que estaba activo
-                // durante ese mes: posStartDate <= último_día AND (posEndDate IS NULL OR posEndDate >= primer_día).
-                // Si hay varios puestos activos en el mismo mes (cambio de oficina), tomamos
-                // el que más días aportó (MAX días de solapamiento) con LIMIT 1 por subquery.
-                string sql = @"
-                    SELECT
-                        o.idOffice                                          AS 'ID Oficina',
-                        o.offCity                                          AS 'Ciudad',
-                        c.couName                                          AS 'País',
-                        COUNT(DISTINCT m.payEmployee)                      AS 'Empleados',
-                        ROUND(SUM(m.paySalaryGross), 2)                   AS 'Gasto Bruto Total (€)',
-                        ROUND(SUM(m.paySalaryNet),   2)                   AS 'Gasto Neto Total (€)'
-                    FROM MonthlyPayments m
-                    /* Subconsulta: officina predominante del empleado en el periodo */
-                    INNER JOIN (
-                        SELECT
-                            posEmployee,
-                            posOffice,
-                            DATEDIFF(
-                                LEAST(COALESCE(posEndDate, LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))),
-                                      LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))),
-                                GREATEST(posStartDate, CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                            ) + 1 AS daysOverlap
-                        FROM Positions
-                        WHERE posStartDate <= LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                          AND (posEndDate IS NULL
-                               OR posEndDate >= CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                    ) AS active_pos
-                        ON  active_pos.posEmployee = m.payEmployee
-                    /* En caso de varios puestos activos en el mes para un empleado,
-                       necesitamos exactamente uno por empleado; usamos un rank */
-                    INNER JOIN (
-                        SELECT posEmployee,
-                               posOffice,
-                               ROW_NUMBER() OVER (
-                                   PARTITION BY posEmployee
-                                   ORDER BY DATEDIFF(
-                                       LEAST(COALESCE(posEndDate, LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))),
-                                             LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))),
-                                       GREATEST(posStartDate, CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                                   ) DESC
-                               ) AS rn
-                        FROM Positions
-                        WHERE posStartDate <= LAST_DAY(CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                          AND (posEndDate IS NULL
-                               OR posEndDate >= CONCAT(@year,'-',LPAD(@month,2,'0'),'-01'))
-                    ) AS ranked_pos
-                        ON  ranked_pos.posEmployee = m.payEmployee
-                        AND ranked_pos.posOffice   = active_pos.posOffice
-                        AND ranked_pos.rn = 1
-                    INNER JOIN Offices   o ON ranked_pos.posOffice = o.idOffice
-                    INNER JOIN Countries c ON o.offCountry         = c.idCountry
-                    WHERE m.payYear = @year AND m.payMonth = @month
-                    GROUP BY o.idOffice, o.offCity, c.couName
-                    ORDER BY SUM(m.paySalaryGross) DESC;";
-
-                var parameters = new System.Collections.Generic.Dictionary<string, object?>
-                {
-                    { "@year",  year  },
-                    { "@month", month }
-                };
-
-                DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
+                DataTable dt = ReportService.GetOfficeExpensesByMonth(year, month);
                 dgvR4.DataSource = dt;
+                FormatMoneyColumns(dgvR4, "Gasto Bruto Total (€)", "Gasto Neto Total (€)");
 
                 decimal grandTotal = 0;
                 foreach (DataRow row in dt.Rows)
                     grandTotal += Convert.ToDecimal(row["Gasto Bruto Total (€)"]);
-                lblR4Total.Text = $"Gasto bruto total del periodo {year}-{month:D2}: {grandTotal:N2} €";
+
+                lblR4Total.Text = dt.Rows.Count > 0
+                    ? $"Gasto bruto total del periodo {year}-{month:D2}: {grandTotal:N2} €"
+                    : $"No hay nóminas registradas para el periodo {year}-{month:D2}.";
             }
             catch (Exception ex)
             {
@@ -524,63 +420,15 @@ namespace GestionNominas.Presentation.Forms
         }
 
         // ────────────────────────────────────────────────────────────────────
-        // Informe 5: Gasto en nóminas por país a lo largo de los meses
-        //
-        // País = país de la OFICINA donde trabajó el empleado ese mes
-        // (no el país del empleado), coherente con la lógica de couTaxBase.
+        // Informe 5: Gasto en nóminas por país en cada mes con datos
         // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport5()
         {
             try
             {
-                // Lógica idéntica a la del Informe 4 para determinar la oficina predominante,
-                // pero ahora agrupamos también por país y por periodo (año, mes).
-                string sql = @"
-                    SELECT
-                        c.idCountry                                       AS 'Código País',
-                        c.couName                                         AS 'País',
-                        m.payYear                                         AS 'Año',
-                        m.payMonth                                        AS 'Mes',
-                        COUNT(DISTINCT m.payEmployee)                     AS 'Empleados',
-                        ROUND(SUM(m.paySalaryGross), 2)                  AS 'Gasto Bruto (€)',
-                        ROUND(SUM(m.paySalaryNet),   2)                  AS 'Gasto Neto (€)',
-                        ROUND(AVG(m.payBonusApplied), 2)                 AS 'Bonus Medio (%)'
-                    FROM MonthlyPayments m
-                    /* Determinar la oficina predominante del empleado en su mes de nómina */
-                    INNER JOIN (
-                        SELECT
-                            p.posEmployee,
-                            p.posOffice,
-                            mp_ref.payYear,
-                            mp_ref.payMonth,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY p.posEmployee, mp_ref.payYear, mp_ref.payMonth
-                                ORDER BY DATEDIFF(
-                                    LEAST(COALESCE(p.posEndDate,
-                                                   LAST_DAY(CONCAT(mp_ref.payYear,'-',LPAD(mp_ref.payMonth,2,'0'),'-01'))),
-                                          LAST_DAY(CONCAT(mp_ref.payYear,'-',LPAD(mp_ref.payMonth,2,'0'),'-01'))),
-                                    GREATEST(p.posStartDate,
-                                             CONCAT(mp_ref.payYear,'-',LPAD(mp_ref.payMonth,2,'0'),'-01'))
-                                ) DESC
-                            ) AS rn
-                        FROM Positions p
-                        INNER JOIN MonthlyPayments mp_ref ON mp_ref.payEmployee = p.posEmployee
-                        WHERE p.posStartDate <= LAST_DAY(CONCAT(mp_ref.payYear,'-',LPAD(mp_ref.payMonth,2,'0'),'-01'))
-                          AND (p.posEndDate IS NULL
-                               OR p.posEndDate >= CONCAT(mp_ref.payYear,'-',LPAD(mp_ref.payMonth,2,'0'),'-01'))
-                    ) AS ranked_pos
-                        ON  ranked_pos.posEmployee = m.payEmployee
-                        AND ranked_pos.payYear     = m.payYear
-                        AND ranked_pos.payMonth    = m.payMonth
-                        AND ranked_pos.rn          = 1
-                    INNER JOIN Offices   o ON ranked_pos.posOffice = o.idOffice
-                    INNER JOIN Countries c ON o.offCountry         = c.idCountry
-                    GROUP BY c.idCountry, c.couName, m.payYear, m.payMonth
-                    ORDER BY c.couName, m.payYear DESC, m.payMonth DESC;";
-
-                DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
-                dgvR5.DataSource = dt;
+                dgvR5.DataSource = ReportService.GetCountryExpensesByMonth();
+                FormatMoneyColumns(dgvR5, "Gasto Bruto (€)", "Gasto Neto (€)");
             }
             catch (Exception ex)
             {

@@ -51,7 +51,7 @@ namespace GestionNominas.Presentation.Forms
             txtAddress = new TextBox { Location = new Point(140, 87), Width = 360, MaxLength = 120 };
 
             var lblBonus = new Label { Text = "Bonus Trienio (%):", Location = new Point(20, 125), AutoSize = true };
-            numBonus = new NumericUpDown { Location = new Point(140, 123), Width = 100, DecimalPlaces = 2, Minimum = 0, Maximum = 100, Value = 5.00m };
+            numBonus = new NumericUpDown { Location = new Point(140, 123), Width = 100, DecimalPlaces = 2, Minimum = 0, Maximum = 99.99m, Value = 5.00m };
 
             btnSave = new Button { Text = "Guardar", Location = new Point(540, 20), Width = 110, Height = 34, BackColor = Color.SteelBlue, ForeColor = Color.White };
             btnSave.Click += BtnSave_Click;
@@ -74,6 +74,8 @@ namespace GestionNominas.Presentation.Forms
                 AllowUserToAddRows = false
             };
             dgvOffices.SelectionChanged += DgvOffices_SelectionChanged;
+            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            dgvOffices.DataBindingComplete += (s, e) => ClearForm();
 
             Controls.Add(dgvOffices);
             Controls.Add(panelForm);
