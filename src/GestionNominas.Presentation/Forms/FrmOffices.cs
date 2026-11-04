@@ -73,9 +73,12 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            dgvOffices.SelectionChanged += DgvOffices_SelectionChanged;
-            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
+            // (La selección automática de la primera fila al cargar la lista NO carga datos,
+            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            dgvOffices.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvOffices_SelectionChanged(s, e); };
             dgvOffices.DataBindingComplete += (s, e) => ClearForm();
+            Shown += (s, e) => ClearForm();
 
             Controls.Add(dgvOffices);
             Controls.Add(panelForm);
@@ -114,6 +117,7 @@ namespace GestionNominas.Presentation.Forms
         {
             if (dgvOffices.SelectedRows.Count > 0 && dgvOffices.SelectedRows[0].DataBoundItem is Office o)
             {
+                btnSave.Text = "Actualizar";
                 txtIdOffice.Text = o.IdOffice.ToString();
                 txtCity.Text = o.City;
                 txtAddress.Text = o.Address;
@@ -180,6 +184,7 @@ namespace GestionNominas.Presentation.Forms
 
         private void ClearForm()
         {
+            btnSave.Text = "Guardar nuevo";
             txtIdOffice.Clear();
             txtCity.Clear();
             txtAddress.Clear();

@@ -90,9 +90,12 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            dgvPositions.SelectionChanged += DgvPositions_SelectionChanged;
-            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
+            // (La selección automática de la primera fila al cargar la lista NO carga datos,
+            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            dgvPositions.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvPositions_SelectionChanged(s, e); };
             dgvPositions.DataBindingComplete += (s, e) => ClearForm();
+            Shown += (s, e) => ClearForm();
 
             Controls.Add(dgvPositions);
             Controls.Add(panelForm);
@@ -136,6 +139,7 @@ namespace GestionNominas.Presentation.Forms
         {
             if (dgvPositions.SelectedRows.Count > 0 && dgvPositions.SelectedRows[0].DataBoundItem is Position pos)
             {
+                btnSave.Text = "Actualizar";
                 txtIdPosition.Text = pos.IdPosition.ToString();
                 txtName.Text = pos.Name;
                 numSalary.Value = pos.YearSalary;
@@ -225,6 +229,7 @@ namespace GestionNominas.Presentation.Forms
 
         private void ClearForm()
         {
+            btnSave.Text = "Guardar nuevo";
             txtIdPosition.Clear();
             txtName.Clear();
             numSalary.Value = 30000m;

@@ -95,9 +95,12 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            dgvCountries.SelectionChanged += DgvCountries_SelectionChanged;
-            // Tras cargar la lista no se deja ninguna fila seleccionada: el formulario queda en modo alta
+            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
+            // (La selección automática de la primera fila al cargar la lista NO carga datos,
+            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            dgvCountries.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvCountries_SelectionChanged(s, e); };
             dgvCountries.DataBindingComplete += (s, e) => ClearForm();
+            Shown += (s, e) => ClearForm();
 
             Controls.Add(dgvCountries);
             Controls.Add(panelForm);
@@ -121,6 +124,7 @@ namespace GestionNominas.Presentation.Forms
         {
             if (dgvCountries.SelectedRows.Count > 0 && dgvCountries.SelectedRows[0].DataBoundItem is Country c)
             {
+                btnSave.Text = "Actualizar";
                 _editingId = c.IdCountry;
                 txtIdCountry.Text = c.IdCountry;
                 txtName.Text = c.Name;
@@ -195,6 +199,7 @@ namespace GestionNominas.Presentation.Forms
 
         private void ClearForm()
         {
+            btnSave.Text = "Guardar nuevo";
             _editingId = null;
             txtIdCountry.Clear();
             txtName.Clear();
