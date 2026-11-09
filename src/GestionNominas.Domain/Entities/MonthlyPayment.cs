@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -111,151 +111,97 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (Patrón Database Broker)
+        #region Métodos de Persistencia (AgenteBD)
 
         /// <summary>
-        /// Inserta la nómina generada en la base de datos a través del Database Broker.
+        /// Inserta la nómina.
         /// </summary>
         public bool Insert()
         {
             Validate();
-
-            string sql = @"INSERT INTO MonthlyPayments (payEmployee, payYear, payMonth, paySalaryGross, paySalaryNet, payBonusApplied) 
-                           VALUES (@payEmployee, @payYear, @payMonth, @paySalaryGross, @paySalaryNet, @payBonusApplied);";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@payEmployee", Employee.IdEmployee },
-                { "@payYear", Year },
-                { "@payMonth", Month },
-                { "@paySalaryGross", SalaryGross },
-                { "@paySalaryNet", SalaryNet },
-                { "@payBonusApplied", BonusApplied }
-            };
-
-            long generatedId = DBBroker.GetInstance().ExecuteInsertAndGetId(sql, parameters);
-            if (generatedId > 0)
-            {
-                IdMonthlyPayment = (int)generatedId;
-                return true;
-            }
-            return false;
+            return AgenteBD.GetInstance().Change($"{InsertSql} {SqlValues()};") > 0;
         }
 
         /// <summary>
-        /// Actualiza una nómina existente en la base de datos.
+        /// Inserta varias nóminas en una única sentencia: o se guardan todas o ninguna.
+        /// El orden de la lista se conserva en los identificadores generados.
+        /// </summary>
+        public static int InsertAll(IReadOnlyCollection<MonthlyPayment> payments)
+        {
+            if (payments.Count == 0) return 0;
+
+            var values = new List<string>();
+            foreach (MonthlyPayment payment in payments)
+            {
+                payment.Validate();
+                values.Add(payment.SqlValues());
+            }
+
+            return AgenteBD.GetInstance().Change($"{InsertSql} {string.Join(", ", values)};");
+        }
+
+        private const string InsertSql =
+            "INSERT INTO MonthlyPayments (payEmployee, payYear, payMonth, paySalaryGross, paySalaryNet, payBonusApplied) VALUES";
+
+        private string SqlValues() =>
+            $"({Employee.IdEmployee}, {Year}, {Month}, {SqlNumber(SalaryGross)}, {SqlNumber(SalaryNet)}, {SqlNumber(BonusApplied)})";
+
+        /// <summary>
+        /// Actualiza una nómina existente.
         /// </summary>
         public bool Update()
         {
             Validate();
 
-            string sql = @"UPDATE MonthlyPayments 
-                           SET payEmployee = @payEmployee, payYear = @payYear, payMonth = @payMonth, 
-                               paySalaryGross = @paySalaryGross, paySalaryNet = @paySalaryNet, payBonusApplied = @payBonusApplied 
-                           WHERE idMonthlyPayment = @idMonthlyPayment;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idMonthlyPayment", IdMonthlyPayment },
-                { "@payEmployee", Employee.IdEmployee },
-                { "@payYear", Year },
-                { "@payMonth", Month },
-                { "@paySalaryGross", SalaryGross },
-                { "@paySalaryNet", SalaryNet },
-                { "@payBonusApplied", BonusApplied }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"UPDATE MonthlyPayments SET payEmployee = {Employee.IdEmployee}, payYear = {Year}, payMonth = {Month}, " +
+                         $"paySalaryGross = {SqlNumber(SalaryGross)}, paySalaryNet = {SqlNumber(SalaryNet)}, " +
+                         $"payBonusApplied = {SqlNumber(BonusApplied)} WHERE idMonthlyPayment = {IdMonthlyPayment};";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Elimina la nómina de la base de datos.
+        /// Elimina la nómina.
         /// </summary>
         public bool Delete()
         {
-            string sql = "DELETE FROM MonthlyPayments WHERE idMonthlyPayment = @idMonthlyPayment;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idMonthlyPayment", IdMonthlyPayment }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            return AgenteBD.GetInstance().Change($"DELETE FROM MonthlyPayments WHERE idMonthlyPayment = {IdMonthlyPayment};") > 0;
         }
 
         /// <summary>
-        /// Lee y mapea todas las nóminas registradas cargando los objetos Employee y Country asociados.
+        /// Lee todas las nóminas registradas.
         /// </summary>
         public static List<MonthlyPayment> ReadAll()
         {
-            string sql = @"SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth, 
-                                  m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                                  e.empName, e.empCountry, e.empIBAN,
-                                  c.couName, c.couTaxBase
-                           FROM MonthlyPayments m
-                           INNER JOIN Employees e ON m.payEmployee = e.idEmployee
-                           INNER JOIN Countries c ON e.empCountry = c.idCountry
-                           ORDER BY m.payYear DESC, m.payMonth DESC, m.paySalaryGross DESC;";
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
-            var list = new List<MonthlyPayment>();
-
-            foreach (DataRow row in dt.Rows)
-            {
-                list.Add(MapFromRow(row));
-            }
-            return list;
+            return ReadList($"{SelectWithOfficeSql} ORDER BY m.payYear DESC, m.payMonth DESC, m.paySalaryGross DESC;");
         }
 
         /// <summary>
-        /// Obtiene todas las nóminas correspondientes a un año y mes concreto,
-        /// opcionalmente filtradas por una oficina específica.
+        /// Obtiene todas las nóminas de un año y mes, opcionalmente filtradas por oficina.
         /// Ordenadas de mayor sueldo bruto a menor.
         /// </summary>
         public static List<MonthlyPayment> ReadByPeriod(int year, int month, int? officeId = null)
         {
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@year", year },
-                { "@month", month }
-            };
+            string officeFilter = officeId.HasValue && officeId.Value > 0 ? $"AND po.posOffice = {officeId.Value}" : string.Empty;
 
-            string officeFilter = string.Empty;
-            if (officeId.HasValue && officeId.Value > 0)
-            {
-                officeFilter = "AND po.posOffice = @officeId";
-                parameters.Add("@officeId", officeId.Value);
-            }
-
-            string sql = $@"{SelectWithOfficeSql}
-                            WHERE m.payYear = @year AND m.payMonth = @month {officeFilter}
-                            ORDER BY m.paySalaryGross DESC;";
-
-            return MapRows(DBBroker.GetInstance().ExecuteQuery(sql, parameters));
+            return ReadList($@"{SelectWithOfficeSql}
+                               WHERE m.payYear = {year} AND m.payMonth = {month} {officeFilter}
+                               ORDER BY m.paySalaryGross DESC;");
         }
 
         /// <summary>
-        /// Obtiene todas las nóminas históricas de un empleado específico ordenadas de más reciente a más antigua.
+        /// Obtiene todas las nóminas de un empleado, de más reciente a más antigua.
         /// </summary>
         public static List<MonthlyPayment> ReadByEmployee(int employeeId)
         {
-            string sql = $@"{SelectWithOfficeSql}
-                            WHERE m.payEmployee = @employeeId
-                            ORDER BY m.payYear DESC, m.payMonth DESC, m.idMonthlyPayment ASC;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@employeeId", employeeId }
-            };
-
-            return MapRows(DBBroker.GetInstance().ExecuteQuery(sql, parameters));
+            return ReadList($@"{SelectWithOfficeSql}
+                               WHERE m.payEmployee = {employeeId}
+                               ORDER BY m.payYear DESC, m.payMonth DESC, m.idMonthlyPayment ASC;");
         }
 
-        private static List<MonthlyPayment> MapRows(DataTable dt)
+        private static List<MonthlyPayment> ReadList(string sql)
         {
             var list = new List<MonthlyPayment>();
-            foreach (DataRow row in dt.Rows)
+            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
             {
                 list.Add(MapFromRow(row));
             }
@@ -314,47 +260,30 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static bool PeriodAlreadyGenerated(int year, int month)
         {
-            string sql = "SELECT COUNT(*) FROM MonthlyPayments WHERE payYear = @year AND payMonth = @month;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@year", year },
-                { "@month", month }
-            };
-
-            object? count = DBBroker.GetInstance().ExecuteScalar(sql, parameters);
-            return count != null && Convert.ToInt32(count) > 0;
+            string sql = $"SELECT COUNT(*) FROM MonthlyPayments WHERE payYear = {year} AND payMonth = {month};";
+            return ReadInt(AgenteBD.GetInstance().Read(sql)[0][0]) > 0;
         }
 
-        /// <summary>
-        /// Mapea una fila de datos a un objeto MonthlyPayment instanciando el objeto Employee.
-        /// </summary>
-        private static MonthlyPayment MapFromRow(DataRow row)
+        private static MonthlyPayment MapFromRow(string[] row)
         {
-            var country = new Country
-            {
-                IdCountry = row["empCountry"].ToString() ?? string.Empty,
-                Name = row.Table.Columns.Contains("couName") ? row["couName"].ToString() ?? string.Empty : string.Empty,
-                TaxBase = row.Table.Columns.Contains("couTaxBase") ? Convert.ToDecimal(row["couTaxBase"]) : 0m
-            };
-
             var employee = new Employee
             {
-                IdEmployee = Convert.ToInt32(row["payEmployee"]),
-                Name = row["empName"].ToString() ?? string.Empty,
-                Country = country,
-                IBAN = row["empIBAN"].ToString() ?? string.Empty
+                IdEmployee = ReadInt(row[1]),
+                Name = row[7],
+                Country = new Country { IdCountry = row[8], Name = row[10], TaxBase = ReadDecimal(row[11]) },
+                IBAN = row[9]
             };
 
             return new MonthlyPayment
             {
-                IdMonthlyPayment = Convert.ToInt32(row["idMonthlyPayment"]),
+                IdMonthlyPayment = ReadInt(row[0]),
                 Employee = employee,
-                Year = Convert.ToInt32(row["payYear"]),
-                Month = Convert.ToInt32(row["payMonth"]),
-                SalaryGross = Convert.ToDecimal(row["paySalaryGross"]),
-                SalaryNet = Convert.ToDecimal(row["paySalaryNet"]),
-                BonusApplied = Convert.ToDecimal(row["payBonusApplied"]),
-                OfficeName = row.Table.Columns.Contains("offCity") ? row["offCity"].ToString() ?? string.Empty : string.Empty
+                Year = ReadInt(row[2]),
+                Month = ReadInt(row[3]),
+                SalaryGross = ReadDecimal(row[4]),
+                SalaryNet = ReadDecimal(row[5]),
+                BonusApplied = ReadDecimal(row[6]),
+                OfficeName = row[12]
             };
         }
 

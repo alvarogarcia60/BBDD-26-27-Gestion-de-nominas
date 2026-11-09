@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using GestionNominas.Domain.Services;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -58,12 +58,10 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (Patrón Database Broker)
+        #region Métodos de Persistencia (AgenteBD)
 
         /// <summary>
-        /// Inserta el país actual en la base de datos a través del Database Broker.
-        /// Si el código IdCountry no está especificado, se genera automáticamente siguiendo
-        /// la regla de negocio de las 3 primeras letras y resolución de colisiones.
+        /// Inserta el país. Si no tiene código, lo genera según la regla del enunciado.
         /// </summary>
         public bool Insert()
         {
@@ -74,62 +72,47 @@ namespace GestionNominas.Domain.Entities
 
             Validate();
 
-            string sql = "INSERT INTO Countries (idCountry, couName, couTaxBase) VALUES (@idCountry, @couName, @couTaxBase);";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idCountry", IdCountry.ToUpper().Trim() },
-                { "@couName", Name.Trim() },
-                { "@couTaxBase", TaxBase }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"INSERT INTO Countries (idCountry, couName, couTaxBase) " +
+                         $"VALUES ({SqlText(IdCountry.ToUpper().Trim())}, {SqlText(Name.Trim())}, {SqlNumber(TaxBase)});";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Actualiza los datos del país en la base de datos.
+        /// Actualiza los datos del país.
         /// </summary>
         public bool Update()
         {
             Validate();
 
-            string sql = "UPDATE Countries SET couName = @couName, couTaxBase = @couTaxBase WHERE idCountry = @idCountry;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idCountry", IdCountry.ToUpper().Trim() },
-                { "@couName", Name.Trim() },
-                { "@couTaxBase", TaxBase }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"UPDATE Countries SET couName = {SqlText(Name.Trim())}, couTaxBase = {SqlNumber(TaxBase)} " +
+                         $"WHERE idCountry = {SqlText(IdCountry.ToUpper().Trim())};";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Elimina el país de la base de datos.
+        /// Elimina el país si no tiene oficinas ni empleados asociados.
         /// </summary>
         public bool Delete()
         {
-            string sql = "DELETE FROM Countries WHERE idCountry = @idCountry;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idCountry", IdCountry }
-            };
+            string id = SqlText(IdCountry);
+            string countSql = $"SELECT (SELECT COUNT(*) FROM Offices WHERE offCountry = {id}) + " +
+                              $"(SELECT COUNT(*) FROM Employees WHERE empCountry = {id});";
 
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            if (ReadInt(AgenteBD.GetInstance().Read(countSql)[0][0]) > 0)
+            {
+                throw new InvalidOperationException("El país tiene oficinas o empleados asociados.");
+            }
+
+            return AgenteBD.GetInstance().Change($"DELETE FROM Countries WHERE idCountry = {id};") > 0;
         }
 
         /// <summary>
-        /// Lee y mapea todos los países registrados ordenados alfabéticamente.
+        /// Lee todos los países ordenados alfabéticamente.
         /// </summary>
         public static List<Country> ReadAll()
         {
-            string sql = "SELECT idCountry, couName, couTaxBase FROM Countries ORDER BY couName ASC;";
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
-
             var list = new List<Country>();
-            foreach (DataRow row in dt.Rows)
+            foreach (string[] row in AgenteBD.GetInstance().Read("SELECT idCountry, couName, couTaxBase FROM Countries ORDER BY couName ASC;"))
             {
                 list.Add(MapFromRow(row));
             }
@@ -137,49 +120,31 @@ namespace GestionNominas.Domain.Entities
         }
 
         /// <summary>
-        /// Busca un país por su clave primaria (código de 3 caracteres).
+        /// Busca un país por su clave primaria.
         /// </summary>
         public static Country? Read(string idCountry)
         {
-            string sql = "SELECT idCountry, couName, couTaxBase FROM Countries WHERE idCountry = @idCountry;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idCountry", idCountry }
-            };
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            if (dt.Rows.Count > 0)
-            {
-                return MapFromRow(dt.Rows[0]);
-            }
-            return null;
+            string sql = $"SELECT idCountry, couName, couTaxBase FROM Countries WHERE idCountry = {SqlText(idCountry)};";
+            List<string[]> rows = AgenteBD.GetInstance().Read(sql);
+            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
         }
 
         /// <summary>
-        /// Comprueba si ya existe un país registrado con el identificador dado.
+        /// Comprueba si ya existe un país con el identificador dado.
         /// </summary>
         public static bool Exists(string idCountry)
         {
-            string sql = "SELECT COUNT(*) FROM Countries WHERE idCountry = @idCountry;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idCountry", idCountry }
-            };
-
-            object? count = DBBroker.GetInstance().ExecuteScalar(sql, parameters);
-            return count != null && Convert.ToInt32(count) > 0;
+            string sql = $"SELECT COUNT(*) FROM Countries WHERE idCountry = {SqlText(idCountry)};";
+            return ReadInt(AgenteBD.GetInstance().Read(sql)[0][0]) > 0;
         }
 
-        /// <summary>
-        /// Mapea una fila de datos (DataRow) a una instancia de Country.
-        /// </summary>
-        private static Country MapFromRow(DataRow row)
+        private static Country MapFromRow(string[] row)
         {
             return new Country
             {
-                IdCountry = row["idCountry"].ToString() ?? string.Empty,
-                Name = row["couName"].ToString() ?? string.Empty,
-                TaxBase = Convert.ToDecimal(row["couTaxBase"])
+                IdCountry = row[0],
+                Name = row[1],
+                TaxBase = ReadDecimal(row[2])
             };
         }
 

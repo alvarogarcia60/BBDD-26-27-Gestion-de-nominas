@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -84,90 +84,59 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (Patrón Database Broker)
+        #region Métodos de Persistencia (AgenteBD)
+
+        private const string SelectSql = @"SELECT o.idOffice, o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
+                                                  c.couName, c.couTaxBase
+                                           FROM Offices o
+                                           INNER JOIN Countries c ON o.offCountry = c.idCountry";
 
         /// <summary>
-        /// Inserta la oficina actual en la base de datos a través del Database Broker.
+        /// Inserta la oficina.
         /// </summary>
         public bool Insert()
         {
             Validate();
 
-            string sql = @"INSERT INTO Offices (offCountry, offCity, offAddress, offThreeYearBonus) 
-                           VALUES (@offCountry, @offCity, @offAddress, @offThreeYearBonus);";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@offCountry", Country.IdCountry },
-                { "@offCity", City.Trim() },
-                { "@offAddress", Address.Trim() },
-                { "@offThreeYearBonus", ThreeYearBonus }
-            };
-
-            long generatedId = DBBroker.GetInstance().ExecuteInsertAndGetId(sql, parameters);
-            if (generatedId > 0)
-            {
-                IdOffice = (int)generatedId;
-                return true;
-            }
-            return false;
+            string sql = $"INSERT INTO Offices (offCountry, offCity, offAddress, offThreeYearBonus) " +
+                         $"VALUES ({SqlText(Country.IdCountry)}, {SqlText(City.Trim())}, {SqlText(Address.Trim())}, {SqlNumber(ThreeYearBonus)});";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Actualiza los datos de la oficina en la base de datos.
+        /// Actualiza los datos de la oficina.
         /// </summary>
         public bool Update()
         {
             Validate();
 
-            string sql = @"UPDATE Offices 
-                           SET offCountry = @offCountry, offCity = @offCity, 
-                               offAddress = @offAddress, offThreeYearBonus = @offThreeYearBonus 
-                           WHERE idOffice = @idOffice;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idOffice", IdOffice },
-                { "@offCountry", Country.IdCountry },
-                { "@offCity", City.Trim() },
-                { "@offAddress", Address.Trim() },
-                { "@offThreeYearBonus", ThreeYearBonus }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"UPDATE Offices SET offCountry = {SqlText(Country.IdCountry)}, offCity = {SqlText(City.Trim())}, " +
+                         $"offAddress = {SqlText(Address.Trim())}, offThreeYearBonus = {SqlNumber(ThreeYearBonus)} " +
+                         $"WHERE idOffice = {IdOffice};";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Elimina la oficina de la base de datos.
+        /// Elimina la oficina si no tiene puestos asociados.
         /// </summary>
         public bool Delete()
         {
-            string sql = "DELETE FROM Offices WHERE idOffice = @idOffice;";
-            var parameters = new Dictionary<string, object?>
+            string countSql = $"SELECT COUNT(*) FROM Positions WHERE posOffice = {IdOffice};";
+            if (ReadInt(AgenteBD.GetInstance().Read(countSql)[0][0]) > 0)
             {
-                { "@idOffice", IdOffice }
-            };
+                throw new InvalidOperationException("La oficina tiene puestos de trabajo asociados.");
+            }
 
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            return AgenteBD.GetInstance().Change($"DELETE FROM Offices WHERE idOffice = {IdOffice};") > 0;
         }
 
         /// <summary>
-        /// Lee y mapea todas las oficinas cargando sus objetos Country asociados mediante INNER JOIN.
+        /// Lee todas las oficinas cargando sus objetos Country.
         /// </summary>
         public static List<Office> ReadAll()
         {
-            string sql = @"SELECT o.idOffice, o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                  c.couName, c.couTaxBase
-                           FROM Offices o
-                           INNER JOIN Countries c ON o.offCountry = c.idCountry
-                           ORDER BY c.couName ASC, o.offCity ASC;";
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
             var list = new List<Office>();
-
-            foreach (DataRow row in dt.Rows)
+            foreach (string[] row in AgenteBD.GetInstance().Read(SelectSql + " ORDER BY c.couName ASC, o.offCity ASC;"))
             {
                 list.Add(MapFromRow(row));
             }
@@ -175,48 +144,23 @@ namespace GestionNominas.Domain.Entities
         }
 
         /// <summary>
-        /// Busca una oficina por su identificador primario cargando la referencia al objeto Country.
+        /// Busca una oficina por su identificador.
         /// </summary>
         public static Office? Read(int idOffice)
         {
-            string sql = @"SELECT o.idOffice, o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                  c.couName, c.couTaxBase
-                           FROM Offices o
-                           INNER JOIN Countries c ON o.offCountry = c.idCountry
-                           WHERE o.idOffice = @idOffice;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idOffice", idOffice }
-            };
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            if (dt.Rows.Count > 0)
-            {
-                return MapFromRow(dt.Rows[0]);
-            }
-            return null;
+            List<string[]> rows = AgenteBD.GetInstance().Read($"{SelectSql} WHERE o.idOffice = {idOffice};");
+            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
         }
 
-        /// <summary>
-        /// Mapea una fila de datos a un objeto Office instanciando su propiedad Country.
-        /// </summary>
-        private static Office MapFromRow(DataRow row)
+        private static Office MapFromRow(string[] row)
         {
-            var country = new Country
-            {
-                IdCountry = row["offCountry"].ToString() ?? string.Empty,
-                Name = row.Table.Columns.Contains("couName") ? row["couName"].ToString() ?? string.Empty : string.Empty,
-                TaxBase = row.Table.Columns.Contains("couTaxBase") ? Convert.ToDecimal(row["couTaxBase"]) : 0m
-            };
-
             return new Office
             {
-                IdOffice = Convert.ToInt32(row["idOffice"]),
-                Country = country,
-                City = row["offCity"].ToString() ?? string.Empty,
-                Address = row["offAddress"].ToString() ?? string.Empty,
-                ThreeYearBonus = Convert.ToDecimal(row["offThreeYearBonus"])
+                IdOffice = ReadInt(row[0]),
+                Country = new Country { IdCountry = row[1], Name = row[5], TaxBase = ReadDecimal(row[6]) },
+                City = row[2],
+                Address = row[3],
+                ThreeYearBonus = ReadDecimal(row[4])
             };
         }
 

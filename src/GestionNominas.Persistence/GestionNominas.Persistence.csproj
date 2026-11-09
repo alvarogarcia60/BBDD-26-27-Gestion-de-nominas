@@ -5,10 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GestionNominas.Persistence</RootNamespace>
+    <NoWarn>$(NoWarn);CS8601</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <PackageReference Include="MySql.Data" Version="26.10.0" />
+    <!-- AgenteBD, facilitado por el profesor, es internal: el dominio necesita acceder a él. -->
+    <InternalsVisibleTo Include="GestionNominas.Domain" />
   </ItemGroup>
 
 </Project>

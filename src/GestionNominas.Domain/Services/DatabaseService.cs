@@ -1,4 +1,5 @@
-using GestionNominas.Persistence;
+using System;
+using Company.persistence;
 
 namespace GestionNominas.Domain.Services
 {
@@ -14,22 +15,29 @@ namespace GestionNominas.Domain.Services
         /// <param name="errorMessage">Mensaje descriptivo del fallo, si lo hay.</param>
         public static bool TestConnection(out string errorMessage)
         {
-            return DBBroker.GetInstance().TestConnection(out errorMessage);
+            try
+            {
+                AgenteBD agente = AgenteBD.GetInstance();
+                agente.connect();
+                agente.disconnect();
+                errorMessage = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         /// <summary>
-        /// Descripción legible del destino de conexión (servidor, puerto, base de datos y usuario).
+        /// Descripción legible del destino de conexión (servidor, base de datos y usuario), definido en AgenteBD.
         /// </summary>
-        public static string ConnectionDescription =>
-            $"Servidor: {DatabaseConfig.Server}\n" +
-            $"Puerto: {DatabaseConfig.Port}\n" +
-            $"Base de datos: {DatabaseConfig.Database}\n" +
-            $"Usuario: {DatabaseConfig.UserId}";
+        public static string ConnectionDescription => "Servidor: localhost\nBase de datos: Company\nUsuario: root";
 
         /// <summary>
         /// Nombre de la base de datos y servidor, en una sola línea.
         /// </summary>
-        public static string ShortDescription =>
-            $"{DatabaseConfig.Database} en {DatabaseConfig.Server}:{DatabaseConfig.Port}";
+        public static string ShortDescription => "Company en localhost";
     }
 }

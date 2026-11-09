@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using GestionNominas.Domain.Entities;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Services
 {
@@ -47,7 +48,10 @@ namespace GestionNominas.Domain.Services
                 ) AS hist ON hist.posEmployee = e.idEmployee
                 ORDER BY o.offCity, e.empName;";
 
-            return DBBroker.GetInstance().ExecuteQuery(sql);
+            return ToTable(sql,
+                ("ID Sede", typeof(int)), ("Sede", typeof(string)), ("ID Empleado", typeof(int)),
+                ("Empleado", typeof(string)), ("Puesto Actual", typeof(string)), ("Días Trabajados", typeof(int)),
+                ("Trienios", typeof(int)), ("Bonus Trienios (%)", typeof(decimal)));
         }
 
         /// <summary>
@@ -71,17 +75,13 @@ namespace GestionNominas.Domain.Services
                 INNER JOIN ({MonthlyPayment.PaymentOfficeSql}) po ON po.idMonthlyPayment = m.idMonthlyPayment
                 INNER JOIN Offices   o ON po.posOffice  = o.idOffice
                 INNER JOIN Countries c ON o.offCountry  = c.idCountry
-                WHERE m.payYear = @year AND m.payMonth = @month
+                WHERE m.payYear = {year} AND m.payMonth = {month}
                 GROUP BY o.idOffice, o.offCity, c.couName
                 ORDER BY SUM(m.paySalaryGross) DESC;";
 
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@year", year },
-                { "@month", month }
-            };
-
-            return DBBroker.GetInstance().ExecuteQuery(sql, parameters);
+            return ToTable(sql,
+                ("ID Oficina", typeof(int)), ("Ciudad", typeof(string)), ("País", typeof(string)), ("Empleados", typeof(int)),
+                ("Gasto Bruto Total (€)", typeof(decimal)), ("Gasto Neto Total (€)", typeof(decimal)));
         }
 
         /// <summary>
@@ -106,7 +106,36 @@ namespace GestionNominas.Domain.Services
                 GROUP BY c.idCountry, c.couName, m.payYear, m.payMonth
                 ORDER BY c.couName, m.payYear DESC, m.payMonth DESC;";
 
-            return DBBroker.GetInstance().ExecuteQuery(sql);
+            return ToTable(sql,
+                ("Código País", typeof(string)), ("País", typeof(string)), ("Año", typeof(int)), ("Mes", typeof(int)),
+                ("Empleados", typeof(int)), ("Gasto Bruto (€)", typeof(decimal)), ("Gasto Neto (€)", typeof(decimal)),
+                ("Bonus Medio (%)", typeof(decimal)));
+        }
+
+        /// <summary>
+        /// Construye la tabla del informe: AgenteBD devuelve solo valores, sin nombres ni tipos de columna.
+        /// </summary>
+        private static DataTable ToTable(string sql, params (string Name, Type Type)[] columns)
+        {
+            var table = new DataTable();
+            foreach (var column in columns)
+            {
+                table.Columns.Add(column.Name, column.Type);
+            }
+
+            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
+            {
+                DataRow dataRow = table.NewRow();
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    if (columns[i].Type == typeof(int)) dataRow[i] = ReadInt(row[i]);
+                    else if (columns[i].Type == typeof(decimal)) dataRow[i] = ReadDecimal(row[i]);
+                    else dataRow[i] = row[i];
+                }
+                table.Rows.Add(dataRow);
+            }
+
+            return table;
         }
     }
 }

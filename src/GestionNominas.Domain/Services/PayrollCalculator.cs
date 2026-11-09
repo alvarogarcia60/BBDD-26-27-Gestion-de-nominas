@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using GestionNominas.Domain.Entities;
-using GestionNominas.Persistence;
 
 namespace GestionNominas.Domain.Services
 {
@@ -91,12 +90,10 @@ namespace GestionNominas.Domain.Services
                     .GroupBy(p => p.Employee.IdEmployee)
                     .ToDictionary(g => g.Key, g => g.ToList());
 
-            // ── 6. Preparar resultado y acceso al broker ─────────────────────
+            // ── 6. Preparar resultado ────────────────────────────────────────
             PayrollResult result = new PayrollResult();
-            DBBroker      broker = DBBroker.GetInstance();
 
-            // ── 7. Transacción que envuelve todo el bucle ────────────────────
-            broker.BeginTransaction();
+            // ── 7. Cálculo de las nóminas de todos los empleados ─────────────
 
             try
             {
@@ -169,7 +166,7 @@ namespace GestionNominas.Domain.Services
                         decimal gross = baseSalary * (1m + bonusRate / 100m);
                         decimal net   = gross * (1m - office.Country.TaxBase / 100m);
 
-                        // ── 7d. Insertar nómina en la BD (dentro de la transacción)
+                        // ── 7d. Preparar la nómina; se guardan todas juntas al final
                         MonthlyPayment payment = new MonthlyPayment
                         {
                             Employee     = employee,
@@ -180,13 +177,12 @@ namespace GestionNominas.Domain.Services
                             BonusApplied = Math.Round(bonusRate, 2, MidpointRounding.AwayFromZero)
                         };
 
-                        payment.Insert();
                         result.GeneratedPayments.Add(payment);
                     }
                 }
 
-                // ── 8. Todo correcto: confirmar transacción ──────────────────
-                broker.CommitTransaction();
+                // ── 8. Una única sentencia INSERT: se guardan todas o ninguna ────
+                MonthlyPayment.InsertAll(result.GeneratedPayments);
                 result.Success                = true;
                 result.ProcessedEmployeesCount =
                     result.GeneratedPayments.Select(p => p.Employee.IdEmployee).Distinct().Count();
@@ -196,14 +192,10 @@ namespace GestionNominas.Domain.Services
             }
             catch (Exception ex)
             {
-                // ── 9. Cualquier fallo: revertir para evitar datos parciales ──
-                try { broker.RollbackTransaction(); }
-                catch { /* absorber error del rollback para no enmascarar el original */ }
-
                 result.Success = false;
                 result.Message =
                     $"Error al generar nóminas del periodo {year}/{month:D2}. " +
-                    $"Se revirtieron todos los cambios. Detalle: {ex.Message}";
+                    $"No se ha guardado ninguna nómina. Detalle: {ex.Message}";
                 result.GeneratedPayments.Clear();
             }
 

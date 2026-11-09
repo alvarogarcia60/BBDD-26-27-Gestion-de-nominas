@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -102,219 +102,118 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (Patrón Database Broker)
+        #region Métodos de Persistencia (AgenteBD)
+
+        private const string SelectSql = @"SELECT p.idPosition, p.posEmployee, p.posOffice, p.posName, p.posYearSalary,
+                                                  p.posStartDate, p.posEndDate,
+                                                  e.empName, e.empCountry, e.empIBAN,
+                                                  o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
+                                                  cOffice.couName, cOffice.couTaxBase,
+                                                  cEmp.couName, cEmp.couTaxBase
+                                           FROM Positions p
+                                           INNER JOIN Employees e ON p.posEmployee = e.idEmployee
+                                           INNER JOIN Offices o ON p.posOffice = o.idOffice
+                                           INNER JOIN Countries cOffice ON o.offCountry = cOffice.idCountry
+                                           INNER JOIN Countries cEmp ON e.empCountry = cEmp.idCountry";
 
         /// <summary>
-        /// Inserta el puesto en la base de datos previa validación de reglas de negocio y solapamiento.
+        /// Inserta el puesto previa validación de reglas de negocio y solapamiento.
         /// </summary>
         public bool Insert()
         {
             Validate();
 
-            string sql = @"INSERT INTO Positions (posEmployee, posOffice, posName, posYearSalary, posStartDate, posEndDate) 
-                           VALUES (@posEmployee, @posOffice, @posName, @posYearSalary, @posStartDate, @posEndDate);";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@posEmployee", Employee.IdEmployee },
-                { "@posOffice", Office.IdOffice },
-                { "@posName", Name.Trim() },
-                { "@posYearSalary", YearSalary },
-                { "@posStartDate", StartDate.ToString("yyyy-MM-dd") },
-                { "@posEndDate", EndDate.HasValue ? EndDate.Value.ToString("yyyy-MM-dd") : null }
-            };
-
-            long generatedId = DBBroker.GetInstance().ExecuteInsertAndGetId(sql, parameters);
-            if (generatedId > 0)
-            {
-                IdPosition = (int)generatedId;
-                return true;
-            }
-            return false;
+            string sql = $"INSERT INTO Positions (posEmployee, posOffice, posName, posYearSalary, posStartDate, posEndDate) " +
+                         $"VALUES ({Employee.IdEmployee}, {Office.IdOffice}, {SqlText(Name.Trim())}, {SqlNumber(YearSalary)}, " +
+                         $"{SqlDate(StartDate)}, {SqlDateOrNull(EndDate)});";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Actualiza el puesto en la base de datos previa validación.
+        /// Actualiza el puesto previa validación.
         /// </summary>
         public bool Update()
         {
             Validate();
 
-            string sql = @"UPDATE Positions 
-                           SET posEmployee = @posEmployee, posOffice = @posOffice, posName = @posName, 
-                               posYearSalary = @posYearSalary, posStartDate = @posStartDate, posEndDate = @posEndDate 
-                           WHERE idPosition = @idPosition;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idPosition", IdPosition },
-                { "@posEmployee", Employee.IdEmployee },
-                { "@posOffice", Office.IdOffice },
-                { "@posName", Name.Trim() },
-                { "@posYearSalary", YearSalary },
-                { "@posStartDate", StartDate.ToString("yyyy-MM-dd") },
-                { "@posEndDate", EndDate.HasValue ? EndDate.Value.ToString("yyyy-MM-dd") : null }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"UPDATE Positions SET posEmployee = {Employee.IdEmployee}, posOffice = {Office.IdOffice}, " +
+                         $"posName = {SqlText(Name.Trim())}, posYearSalary = {SqlNumber(YearSalary)}, " +
+                         $"posStartDate = {SqlDate(StartDate)}, posEndDate = {SqlDateOrNull(EndDate)} " +
+                         $"WHERE idPosition = {IdPosition};";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Elimina el puesto de la base de datos.
+        /// Elimina el puesto.
         /// </summary>
         public bool Delete()
         {
-            string sql = "DELETE FROM Positions WHERE idPosition = @idPosition;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idPosition", IdPosition }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            return AgenteBD.GetInstance().Change($"DELETE FROM Positions WHERE idPosition = {IdPosition};") > 0;
         }
 
         /// <summary>
-        /// Lee todos los puestos instanciando las entidades Employee y Office correspondientes con sus países.
+        /// Lee todos los puestos con sus empleados y oficinas.
         /// </summary>
         public static List<Position> ReadAll()
         {
-            string sql = @"SELECT p.idPosition, p.posEmployee, p.posOffice, p.posName, p.posYearSalary, 
-                                  p.posStartDate, p.posEndDate,
-                                  e.empName, e.empCountry, e.empIBAN,
-                                  o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                  cOffice.couName AS officeCouName, cOffice.couTaxBase AS officeTaxBase,
-                                  cEmp.couName AS empCouName, cEmp.couTaxBase AS empTaxBase
-                           FROM Positions p
-                           INNER JOIN Employees e ON p.posEmployee = e.idEmployee
-                           INNER JOIN Offices o ON p.posOffice = o.idOffice
-                           INNER JOIN Countries cOffice ON o.offCountry = cOffice.idCountry
-                           INNER JOIN Countries cEmp ON e.empCountry = cEmp.idCountry
-                           ORDER BY p.posStartDate DESC;";
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
-            var list = new List<Position>();
-
-            foreach (DataRow row in dt.Rows)
-            {
-                list.Add(MapFromRow(row));
-            }
-            return list;
+            return ReadList(SelectSql + " ORDER BY p.posStartDate DESC;");
         }
 
         /// <summary>
-        /// Busca un puesto por su identificador primario cargando los objetos Employee y Office asociados.
+        /// Busca un puesto por su identificador.
         /// </summary>
         public static Position? Read(int idPosition)
         {
-            string sql = @"SELECT p.idPosition, p.posEmployee, p.posOffice, p.posName, p.posYearSalary, 
-                                  p.posStartDate, p.posEndDate,
-                                  e.empName, e.empCountry, e.empIBAN,
-                                  o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                  cOffice.couName AS officeCouName, cOffice.couTaxBase AS officeTaxBase,
-                                  cEmp.couName AS empCouName, cEmp.couTaxBase AS empTaxBase
-                           FROM Positions p
-                           INNER JOIN Employees e ON p.posEmployee = e.idEmployee
-                           INNER JOIN Offices o ON p.posOffice = o.idOffice
-                           INNER JOIN Countries cOffice ON o.offCountry = cOffice.idCountry
-                           INNER JOIN Countries cEmp ON e.empCountry = cEmp.idCountry
-                           WHERE p.idPosition = @idPosition;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idPosition", idPosition }
-            };
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            if (dt.Rows.Count > 0)
-            {
-                return MapFromRow(dt.Rows[0]);
-            }
-            return null;
+            List<Position> list = ReadList($"{SelectSql} WHERE p.idPosition = {idPosition};");
+            return list.Count > 0 ? list[0] : null;
         }
 
         /// <summary>
-        /// Lee todos los puestos asignados a un empleado específico.
+        /// Lee todos los puestos asignados a un empleado.
         /// </summary>
         public static List<Position> ReadByEmployee(int employeeId)
         {
-            string sql = @"SELECT p.idPosition, p.posEmployee, p.posOffice, p.posName, p.posYearSalary, 
-                                  p.posStartDate, p.posEndDate,
-                                  e.empName, e.empCountry, e.empIBAN,
-                                  o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                  cOffice.couName AS officeCouName, cOffice.couTaxBase AS officeTaxBase,
-                                  cEmp.couName AS empCouName, cEmp.couTaxBase AS empTaxBase
-                           FROM Positions p
-                           INNER JOIN Employees e ON p.posEmployee = e.idEmployee
-                           INNER JOIN Offices o ON p.posOffice = o.idOffice
-                           INNER JOIN Countries cOffice ON o.offCountry = cOffice.idCountry
-                           INNER JOIN Countries cEmp ON e.empCountry = cEmp.idCountry
-                           WHERE p.posEmployee = @employeeId
-                           ORDER BY p.posStartDate ASC;";
+            return ReadList($"{SelectSql} WHERE p.posEmployee = {employeeId} ORDER BY p.posStartDate ASC;");
+        }
 
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@employeeId", employeeId }
-            };
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
+        private static List<Position> ReadList(string sql)
+        {
             var list = new List<Position>();
-
-            foreach (DataRow row in dt.Rows)
+            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
             {
                 list.Add(MapFromRow(row));
             }
             return list;
         }
 
-        /// <summary>
-        /// Mapea una fila de datos instanciando los objetos Employee y Office (con sus respectivos Countries).
-        /// </summary>
-        private static Position MapFromRow(DataRow row)
+        private static Position MapFromRow(string[] row)
         {
-            var empCountry = new Country
-            {
-                IdCountry = row["empCountry"].ToString() ?? string.Empty,
-                Name = row.Table.Columns.Contains("empCouName") ? row["empCouName"].ToString() ?? string.Empty : string.Empty,
-                TaxBase = row.Table.Columns.Contains("empTaxBase") ? Convert.ToDecimal(row["empTaxBase"]) : 0m
-            };
-
             var employee = new Employee
             {
-                IdEmployee = Convert.ToInt32(row["posEmployee"]),
-                Name = row["empName"].ToString() ?? string.Empty,
-                Country = empCountry,
-                IBAN = row["empIBAN"].ToString() ?? string.Empty
-            };
-
-            var offCountry = new Country
-            {
-                IdCountry = row["offCountry"].ToString() ?? string.Empty,
-                Name = row.Table.Columns.Contains("officeCouName") ? row["officeCouName"].ToString() ?? string.Empty : string.Empty,
-                TaxBase = row.Table.Columns.Contains("officeTaxBase") ? Convert.ToDecimal(row["officeTaxBase"]) : 0m
+                IdEmployee = ReadInt(row[1]),
+                Name = row[7],
+                Country = new Country { IdCountry = row[8], Name = row[16], TaxBase = ReadDecimal(row[17]) },
+                IBAN = row[9]
             };
 
             var office = new Office
             {
-                IdOffice = Convert.ToInt32(row["posOffice"]),
-                Country = offCountry,
-                City = row["offCity"].ToString() ?? string.Empty,
-                Address = row["offAddress"].ToString() ?? string.Empty,
-                ThreeYearBonus = Convert.ToDecimal(row["offThreeYearBonus"])
+                IdOffice = ReadInt(row[2]),
+                Country = new Country { IdCountry = row[10], Name = row[14], TaxBase = ReadDecimal(row[15]) },
+                City = row[11],
+                Address = row[12],
+                ThreeYearBonus = ReadDecimal(row[13])
             };
-
-            DateTime? endDate = row["posEndDate"] != DBNull.Value ? Convert.ToDateTime(row["posEndDate"]) : null;
 
             return new Position
             {
-                IdPosition = Convert.ToInt32(row["idPosition"]),
+                IdPosition = ReadInt(row[0]),
                 Employee = employee,
                 Office = office,
-                Name = row["posName"].ToString() ?? string.Empty,
-                YearSalary = Convert.ToDecimal(row["posYearSalary"]),
-                StartDate = Convert.ToDateTime(row["posStartDate"]),
-                EndDate = endDate
+                Name = row[3],
+                YearSalary = ReadDecimal(row[4]),
+                StartDate = ReadDate(row[5]),
+                EndDate = ReadDateOrNull(row[6])
             };
         }
 

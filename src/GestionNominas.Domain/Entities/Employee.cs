@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
-using GestionNominas.Persistence;
+using Company.persistence;
+using static GestionNominas.Domain.Services.SqlFormat;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -76,103 +76,58 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (Patrón Database Broker)
+        #region Métodos de Persistencia (AgenteBD)
+
+        private const string SelectSql = @"SELECT e.idEmployee, e.empName, e.empCountry, e.empIBAN,
+                                                  c.couName, c.couTaxBase
+                                           FROM Employees e
+                                           INNER JOIN Countries c ON e.empCountry = c.idCountry";
 
         /// <summary>
-        /// Inserta el empleado en la base de datos a través del Database Broker.
+        /// Inserta el empleado.
         /// </summary>
         public bool Insert()
         {
             Validate();
 
-            string sql = @"INSERT INTO Employees (empName, empCountry, empIBAN) 
-                           VALUES (@empName, @empCountry, @empIBAN);";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@empName", Name.Trim() },
-                { "@empCountry", Country.IdCountry },
-                { "@empIBAN", IBAN.Trim().Replace(" ", "").ToUpper() }
-            };
-
-            long generatedId = DBBroker.GetInstance().ExecuteInsertAndGetId(sql, parameters);
-            if (generatedId > 0)
-            {
-                IdEmployee = (int)generatedId;
-                return true;
-            }
-            return false;
+            string sql = $"INSERT INTO Employees (empName, empCountry, empIBAN) " +
+                         $"VALUES ({SqlText(Name.Trim())}, {SqlText(Country.IdCountry)}, {SqlText(NormalizedIban)});";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
         /// <summary>
-        /// Actualiza los datos del empleado en la base de datos.
+        /// Actualiza los datos del empleado.
         /// </summary>
         public bool Update()
         {
             Validate();
 
-            string sql = @"UPDATE Employees 
-                           SET empName = @empName, empCountry = @empCountry, empIBAN = @empIBAN 
-                           WHERE idEmployee = @idEmployee;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idEmployee", IdEmployee },
-                { "@empName", Name.Trim() },
-                { "@empCountry", Country.IdCountry },
-                { "@empIBAN", IBAN.Trim().Replace(" ", "").ToUpper() }
-            };
-
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            string sql = $"UPDATE Employees SET empName = {SqlText(Name.Trim())}, empCountry = {SqlText(Country.IdCountry)}, " +
+                         $"empIBAN = {SqlText(NormalizedIban)} WHERE idEmployee = {IdEmployee};";
+            return AgenteBD.GetInstance().Change(sql) > 0;
         }
 
+        private string NormalizedIban => IBAN.Trim().Replace(" ", "").ToUpper();
+
         /// <summary>
-        /// Elimina el empleado junto con sus nóminas y puestos en una única transacción.
+        /// Elimina el empleado junto con sus nóminas y puestos.
         /// Las claves foráneas del esquema son NO ACTION, así que hay que borrar antes las filas hijas.
         /// </summary>
         public bool Delete()
         {
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idEmployee", IdEmployee }
-            };
-
-            DBBroker broker = DBBroker.GetInstance();
-            broker.BeginTransaction();
-
-            try
-            {
-                broker.ExecuteNonQuery("DELETE FROM MonthlyPayments WHERE payEmployee = @idEmployee;", parameters);
-                broker.ExecuteNonQuery("DELETE FROM Positions WHERE posEmployee = @idEmployee;", parameters);
-                int affected = broker.ExecuteNonQuery("DELETE FROM Employees WHERE idEmployee = @idEmployee;", parameters);
-
-                broker.CommitTransaction();
-                return affected > 0;
-            }
-            catch
-            {
-                try { broker.RollbackTransaction(); }
-                catch { /* absorber error del rollback para no enmascarar el original */ }
-                throw;
-            }
+            AgenteBD agente = AgenteBD.GetInstance();
+            agente.Change($"DELETE FROM MonthlyPayments WHERE payEmployee = {IdEmployee};");
+            agente.Change($"DELETE FROM Positions WHERE posEmployee = {IdEmployee};");
+            return agente.Change($"DELETE FROM Employees WHERE idEmployee = {IdEmployee};") > 0;
         }
 
         /// <summary>
-        /// Lee y mapea todos los empleados de la base de datos cargando su objeto Country.
+        /// Lee todos los empleados cargando su objeto Country.
         /// </summary>
         public static List<Employee> ReadAll()
         {
-            string sql = @"SELECT e.idEmployee, e.empName, e.empCountry, e.empIBAN,
-                                  c.couName, c.couTaxBase
-                           FROM Employees e
-                           INNER JOIN Countries c ON e.empCountry = c.idCountry
-                           ORDER BY e.empName ASC;";
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql);
             var list = new List<Employee>();
-
-            foreach (DataRow row in dt.Rows)
+            foreach (string[] row in AgenteBD.GetInstance().Read(SelectSql + " ORDER BY e.empName ASC;"))
             {
                 list.Add(MapFromRow(row));
             }
@@ -180,47 +135,22 @@ namespace GestionNominas.Domain.Entities
         }
 
         /// <summary>
-        /// Obtiene un empleado por su ID primario cargando su objeto Country.
+        /// Obtiene un empleado por su identificador.
         /// </summary>
         public static Employee? Read(int idEmployee)
         {
-            string sql = @"SELECT e.idEmployee, e.empName, e.empCountry, e.empIBAN,
-                                  c.couName, c.couTaxBase
-                           FROM Employees e
-                           INNER JOIN Countries c ON e.empCountry = c.idCountry
-                           WHERE e.idEmployee = @idEmployee;";
-
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@idEmployee", idEmployee }
-            };
-
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            if (dt.Rows.Count > 0)
-            {
-                return MapFromRow(dt.Rows[0]);
-            }
-            return null;
+            List<string[]> rows = AgenteBD.GetInstance().Read($"{SelectSql} WHERE e.idEmployee = {idEmployee};");
+            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
         }
 
-        /// <summary>
-        /// Mapea una fila de datos a un objeto Employee instanciando su propiedad Country.
-        /// </summary>
-        private static Employee MapFromRow(DataRow row)
+        private static Employee MapFromRow(string[] row)
         {
-            var country = new Country
-            {
-                IdCountry = row["empCountry"].ToString() ?? string.Empty,
-                Name = row.Table.Columns.Contains("couName") ? row["couName"].ToString() ?? string.Empty : string.Empty,
-                TaxBase = row.Table.Columns.Contains("couTaxBase") ? Convert.ToDecimal(row["couTaxBase"]) : 0m
-            };
-
             return new Employee
             {
-                IdEmployee = Convert.ToInt32(row["idEmployee"]),
-                Name = row["empName"].ToString() ?? string.Empty,
-                Country = country,
-                IBAN = row["empIBAN"].ToString() ?? string.Empty
+                IdEmployee = ReadInt(row[0]),
+                Name = row[1],
+                Country = new Country { IdCountry = row[2], Name = row[4], TaxBase = ReadDecimal(row[5]) },
+                IBAN = row[3]
             };
         }
 
