@@ -104,6 +104,8 @@ namespace GestionNominas.Presentation.Forms
 
             Controls.Add(dgvCountries);
             Controls.Add(panelForm);
+
+            UiTheme.Apply(this, "Países", "Códigos de país e impuestos aplicables");
         }
 
         private void LoadData()

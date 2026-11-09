@@ -132,6 +132,8 @@ namespace GestionNominas.Presentation.Forms
 
             Controls.Add(dgvPayments);
             Controls.Add(panelTop);
+
+            UiTheme.Apply(this, "Nóminas mensuales", "Generación y consulta de las nóminas de cada periodo");
         }
 
         // ────────────────────────────────────────────────────────────────────

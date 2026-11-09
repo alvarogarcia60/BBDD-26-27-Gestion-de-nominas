@@ -78,6 +78,8 @@ namespace GestionNominas.Presentation.Forms
 
             Controls.Add(dgvEmployees);
             Controls.Add(panelForm);
+
+            UiTheme.Apply(this, "Empleados", "Datos personales, país e IBAN");
         }
 
         private void LoadCountries()

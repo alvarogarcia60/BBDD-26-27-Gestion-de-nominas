@@ -81,6 +81,8 @@ namespace GestionNominas.Presentation.Forms
 
             tabReports.TabPages.AddRange(new[] { tab1, tab2, tab3, tab4, tab5 });
             Controls.Add(tabReports);
+
+            UiTheme.Apply(this, "Informes", "Listados de nóminas, antigüedad y gasto por oficina y país");
         }
 
         // ── Tab 1 ─────────────────────────────────────────────────────────

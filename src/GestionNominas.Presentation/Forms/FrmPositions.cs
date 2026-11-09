@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using GestionNominas.Domain.Entities;
@@ -99,6 +100,9 @@ namespace GestionNominas.Presentation.Forms
 
             Controls.Add(dgvPositions);
             Controls.Add(panelForm);
+
+            UiTheme.Apply(this, "Puestos de trabajo", "Historial de puestos, oficinas y salarios",
+                new Dictionary<string, string> { { "Name", "Cargo" } });
         }
 
         private void LoadCombos()
@@ -112,7 +116,9 @@ namespace GestionNominas.Presentation.Forms
 
                 var offices = Office.ReadAll();
                 cmbOffice.DataSource = offices;
-                cmbOffice.DisplayMember = "ToString";
+                // "ToString" no es una propiedad: se formatea cada oficina con su descripción
+                cmbOffice.FormattingEnabled = true;
+                cmbOffice.Format += (s, e) => e.Value = e.ListItem?.ToString() ?? string.Empty;
                 cmbOffice.ValueMember = "IdOffice";
             }
             catch (Exception ex)

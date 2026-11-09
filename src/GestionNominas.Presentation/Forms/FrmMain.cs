@@ -10,6 +10,7 @@ namespace GestionNominas.Presentation.Forms
         public FrmMain()
         {
             InitializeComponent();
+            UiTheme.ApplyMain(panelHeader, panelDashboard, statusStrip1, menuStrip1);
         }
 
         private void FrmMain_Load(object sender, EventArgs e)

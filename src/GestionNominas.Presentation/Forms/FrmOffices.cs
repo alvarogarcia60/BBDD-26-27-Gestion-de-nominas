@@ -82,6 +82,8 @@ namespace GestionNominas.Presentation.Forms
 
             Controls.Add(dgvOffices);
             Controls.Add(panelForm);
+
+            UiTheme.Apply(this, "Oficinas", "Sedes de la organización y bonus por trienio");
         }
 
         private void LoadCountries()
