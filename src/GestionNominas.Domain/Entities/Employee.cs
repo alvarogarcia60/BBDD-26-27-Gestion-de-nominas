@@ -33,7 +33,7 @@ namespace GestionNominas.Domain.Entities
         public Country Country { get; set; } = new Country();
 
         /// <summary>
-        /// Código de cuenta bancaria internacional IBAN (VARCHAR(34), Clave Única).
+        /// Código de cuenta bancaria internacional IBAN (VARCHAR(34)).
         /// </summary>
         public string IBAN { get; set; } = string.Empty;
 
@@ -128,18 +128,34 @@ namespace GestionNominas.Domain.Entities
         }
 
         /// <summary>
-        /// Elimina el empleado de la base de datos.
+        /// Elimina el empleado junto con sus nóminas y puestos en una única transacción.
+        /// Las claves foráneas del esquema son NO ACTION, así que hay que borrar antes las filas hijas.
         /// </summary>
         public bool Delete()
         {
-            string sql = "DELETE FROM Employees WHERE idEmployee = @idEmployee;";
             var parameters = new Dictionary<string, object?>
             {
                 { "@idEmployee", IdEmployee }
             };
 
-            int affected = DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-            return affected > 0;
+            DBBroker broker = DBBroker.GetInstance();
+            broker.BeginTransaction();
+
+            try
+            {
+                broker.ExecuteNonQuery("DELETE FROM MonthlyPayments WHERE payEmployee = @idEmployee;", parameters);
+                broker.ExecuteNonQuery("DELETE FROM Positions WHERE posEmployee = @idEmployee;", parameters);
+                int affected = broker.ExecuteNonQuery("DELETE FROM Employees WHERE idEmployee = @idEmployee;", parameters);
+
+                broker.CommitTransaction();
+                return affected > 0;
+            }
+            catch
+            {
+                try { broker.RollbackTransaction(); }
+                catch { /* absorber error del rollback para no enmascarar el original */ }
+                throw;
+            }
         }
 
         /// <summary>

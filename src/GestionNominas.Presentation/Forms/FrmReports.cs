@@ -313,6 +313,7 @@ namespace GestionNominas.Presentation.Forms
                 var table = new DataTable();
                 table.Columns.Add("ID",              typeof(int));
                 table.Columns.Add("Empleado",        typeof(string));
+                table.Columns.Add("Oficina",         typeof(string));
                 table.Columns.Add("Año",             typeof(int));
                 table.Columns.Add("Mes",             typeof(int));
                 table.Columns.Add("Bruto (€)",       typeof(decimal));
@@ -320,7 +321,7 @@ namespace GestionNominas.Presentation.Forms
                 table.Columns.Add("Bonus Aplicado %",typeof(decimal));
 
                 foreach (var p in list)
-                    table.Rows.Add(p.IdMonthlyPayment, p.Employee.Name,
+                    table.Rows.Add(p.IdMonthlyPayment, p.Employee.Name, p.OfficeName,
                                    p.Year, p.Month,
                                    p.SalaryGross, p.SalaryNet, p.BonusApplied);
 
@@ -353,12 +354,13 @@ namespace GestionNominas.Presentation.Forms
                 var table = new DataTable();
                 table.Columns.Add("Año",             typeof(int));
                 table.Columns.Add("Mes",             typeof(int));
+                table.Columns.Add("Oficina",         typeof(string));
                 table.Columns.Add("Bruto (€)",       typeof(decimal));
                 table.Columns.Add("Neto (€)",        typeof(decimal));
                 table.Columns.Add("Bonus Aplicado %",typeof(decimal));
 
                 foreach (var p in list)
-                    table.Rows.Add(p.Year, p.Month, p.SalaryGross, p.SalaryNet, p.BonusApplied);
+                    table.Rows.Add(p.Year, p.Month, p.OfficeName, p.SalaryGross, p.SalaryNet, p.BonusApplied);
 
                 dgvR2.DataSource = table;
                 FormatMoneyColumns(dgvR2, "Bruto (€)", "Neto (€)");

@@ -10,8 +10,7 @@ namespace GestionNominas.Domain.Services
     /// Servicio de Dominio: Informes agregados de nóminas.
     /// Centraliza las consultas de los informes para que la capa de presentación
     /// no acceda directamente a la capa de persistencia (arquitectura en 3 capas).
-    /// Las nóminas se atribuyen a la oficina en la que el empleado trabajó más días
-    /// en el mes correspondiente (ver <see cref="MonthlyPayment.PredominantOfficeSql"/>).
+    /// Cada nómina se atribuye a su oficina (ver <see cref="MonthlyPayment.PaymentOfficeSql"/>).
     /// </summary>
     public static class ReportService
     {
@@ -53,7 +52,7 @@ namespace GestionNominas.Domain.Services
 
         /// <summary>
         /// Informe 4: gasto en nóminas de cada oficina en un año-mes.
-        /// Cada nómina se cuenta una única vez, en la oficina predominante del empleado ese mes.
+        /// Si un empleado cambió de oficina, cada una de sus nóminas cuenta en su oficina.
         /// </summary>
         public static DataTable GetOfficeExpensesByMonth(int year, int month)
         {
@@ -69,7 +68,7 @@ namespace GestionNominas.Domain.Services
                     ROUND(SUM(m.paySalaryGross), 2)  AS 'Gasto Bruto Total (€)',
                     ROUND(SUM(m.paySalaryNet), 2)    AS 'Gasto Neto Total (€)'
                 FROM MonthlyPayments m
-                INNER JOIN ({MonthlyPayment.PredominantOfficeSql}) po ON po.posEmployee = m.payEmployee
+                INNER JOIN ({MonthlyPayment.PaymentOfficeSql}) po ON po.idMonthlyPayment = m.idMonthlyPayment
                 INNER JOIN Offices   o ON po.posOffice  = o.idOffice
                 INNER JOIN Countries c ON o.offCountry  = c.idCountry
                 WHERE m.payYear = @year AND m.payMonth = @month
@@ -79,9 +78,7 @@ namespace GestionNominas.Domain.Services
             var parameters = new Dictionary<string, object?>
             {
                 { "@year", year },
-                { "@month", month },
-                { "@firstDay", new DateTime(year, month, 1) },
-                { "@lastDay", new DateTime(year, month, DateTime.DaysInMonth(year, month)) }
+                { "@month", month }
             };
 
             return DBBroker.GetInstance().ExecuteQuery(sql, parameters);
@@ -92,40 +89,19 @@ namespace GestionNominas.Domain.Services
         /// </summary>
         public static DataTable GetCountryExpensesByMonth()
         {
-            string sql = @"
+            string sql = $@"
                 SELECT
                     c.idCountry                      AS 'Código País',
                     c.couName                        AS 'País',
                     m.payYear                        AS 'Año',
                     m.payMonth                       AS 'Mes',
-                    COUNT(*)                         AS 'Empleados',
+                    COUNT(DISTINCT m.payEmployee)    AS 'Empleados',
                     ROUND(SUM(m.paySalaryGross), 2)  AS 'Gasto Bruto (€)',
                     ROUND(SUM(m.paySalaryNet), 2)    AS 'Gasto Neto (€)',
                     ROUND(AVG(m.payBonusApplied), 2) AS 'Bonus Medio (%)'
                 FROM MonthlyPayments m
-                /* Oficina predominante del empleado en el mes de cada nómina */
-                INNER JOIN (
-                    SELECT p.posEmployee, p.posOffice, mp.payYear, mp.payMonth,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY p.posEmployee, mp.payYear, mp.payMonth
-                               ORDER BY DATEDIFF(
-                                            LEAST(COALESCE(p.posEndDate, LAST_DAY(MAKEDATE(mp.payYear, 1) + INTERVAL (mp.payMonth - 1) MONTH)),
-                                                  LAST_DAY(MAKEDATE(mp.payYear, 1) + INTERVAL (mp.payMonth - 1) MONTH)),
-                                            GREATEST(p.posStartDate, MAKEDATE(mp.payYear, 1) + INTERVAL (mp.payMonth - 1) MONTH)
-                                        ) DESC,
-                                        p.posStartDate DESC
-                           ) AS rn
-                    FROM Positions p
-                    INNER JOIN MonthlyPayments mp ON mp.payEmployee = p.posEmployee
-                    WHERE p.posStartDate <= LAST_DAY(MAKEDATE(mp.payYear, 1) + INTERVAL (mp.payMonth - 1) MONTH)
-                      AND (p.posEndDate IS NULL
-                           OR p.posEndDate >= MAKEDATE(mp.payYear, 1) + INTERVAL (mp.payMonth - 1) MONTH)
-                ) AS ranked
-                    ON  ranked.posEmployee = m.payEmployee
-                    AND ranked.payYear     = m.payYear
-                    AND ranked.payMonth    = m.payMonth
-                    AND ranked.rn          = 1
-                INNER JOIN Offices   o ON ranked.posOffice = o.idOffice
+                INNER JOIN ({MonthlyPayment.PaymentOfficeSql}) po ON po.idMonthlyPayment = m.idMonthlyPayment
+                INNER JOIN Offices   o ON po.posOffice     = o.idOffice
                 INNER JOIN Countries c ON o.offCountry     = c.idCountry
                 GROUP BY c.idCountry, c.couName, m.payYear, m.payMonth
                 ORDER BY c.couName, m.payYear DESC, m.payMonth DESC;";

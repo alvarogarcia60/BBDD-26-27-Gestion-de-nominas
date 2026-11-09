@@ -1,21 +1,27 @@
-CREATE DATABASE  IF NOT EXISTS `nominas_db` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
-USE `nominas_db`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
--- Host: localhost    Database: nominas_db
+-- Host: localhost    Database: company
 -- ------------------------------------------------------
 -- Server version	8.0.44
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!50503 SET NAMES utf8 */;
+/*!50503 SET NAMES utf8mb4 */;
 /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
 /*!40103 SET TIME_ZONE='+00:00' */;
 /*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Current Database: `company`
+--
+
+CREATE DATABASE /*!32312 IF NOT EXISTS*/ `company` /*!40100 DEFAULT CHARACTER SET utf8mb3 */ /*!80016 DEFAULT ENCRYPTION='N' */;
+
+USE `company`;
 
 --
 -- Table structure for table `countries`
@@ -25,12 +31,11 @@ DROP TABLE IF EXISTS `countries`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `countries` (
-  `idCountry` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `couName` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `idCountry` char(3) NOT NULL,
+  `couName` varchar(120) NOT NULL,
   `couTaxBase` decimal(4,2) NOT NULL,
-  PRIMARY KEY (`idCountry`),
-  CONSTRAINT `chk_couTaxBase` CHECK (((`couTaxBase` >= 0.00) and (`couTaxBase` <= 100.00)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  PRIMARY KEY (`idCountry`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -52,14 +57,13 @@ DROP TABLE IF EXISTS `employees`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `employees` (
   `idEmployee` int NOT NULL AUTO_INCREMENT,
-  `empName` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `empCountry` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `empIBAN` varchar(34) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `empName` varchar(120) NOT NULL,
+  `empCountry` char(3) NOT NULL,
+  `empIBAN` varchar(34) NOT NULL,
   PRIMARY KEY (`idEmployee`),
-  UNIQUE KEY `uq_employees_iban` (`empIBAN`),
-  KEY `idx_employees_country` (`empCountry`),
-  CONSTRAINT `fk_employees_countries` FOREIGN KEY (`empCountry`) REFERENCES `countries` (`idCountry`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `fk_Employees_Countries1_idx` (`empCountry`),
+  CONSTRAINT `fk_Employees_Countries1` FOREIGN KEY (`empCountry`) REFERENCES `countries` (`idCountry`)
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -88,15 +92,9 @@ CREATE TABLE `monthlypayments` (
   `paySalaryNet` decimal(11,2) NOT NULL,
   `payBonusApplied` decimal(4,2) NOT NULL,
   PRIMARY KEY (`idMonthlyPayment`),
-  UNIQUE KEY `uq_monthlypayments_period` (`payEmployee`,`payYear`,`payMonth`),
-  KEY `idx_monthlypayments_period` (`payYear`,`payMonth`),
-  KEY `idx_monthlypayments_employee` (`payEmployee`),
-  CONSTRAINT `fk_monthlypayments_employees` FOREIGN KEY (`payEmployee`) REFERENCES `employees` (`idEmployee`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `chk_monthlypayments_bonus` CHECK ((`payBonusApplied` >= 0.00)),
-  CONSTRAINT `chk_monthlypayments_gross` CHECK ((`paySalaryGross` >= 0.00)),
-  CONSTRAINT `chk_monthlypayments_month` CHECK ((`payMonth` between 1 and 12)),
-  CONSTRAINT `chk_monthlypayments_net` CHECK ((`paySalaryNet` >= 0.00))
-) ENGINE=InnoDB AUTO_INCREMENT=121 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `fk_MonthlySalaryPayments_Employees1_idx` (`payEmployee`),
+  CONSTRAINT `fk_MonthlySalaryPayments_Employees1` FOREIGN KEY (`payEmployee`) REFERENCES `employees` (`idEmployee`)
+) ENGINE=InnoDB AUTO_INCREMENT=121 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -118,15 +116,14 @@ DROP TABLE IF EXISTS `offices`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `offices` (
   `idOffice` int NOT NULL AUTO_INCREMENT,
-  `offCountry` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `offCity` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `offAddress` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `offCountry` char(3) NOT NULL,
+  `offCity` varchar(60) NOT NULL,
+  `offAddress` varchar(120) NOT NULL,
   `offThreeYearBonus` decimal(4,2) NOT NULL,
   PRIMARY KEY (`idOffice`),
-  KEY `idx_offices_country` (`offCountry`),
-  CONSTRAINT `fk_offices_countries` FOREIGN KEY (`offCountry`) REFERENCES `countries` (`idCountry`) ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT `chk_offThreeYearBonus` CHECK (((`offThreeYearBonus` >= 0.00) and (`offThreeYearBonus` <= 100.00)))
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `fk_Offices_Countries_idx` (`offCountry`),
+  CONSTRAINT `fk_Offices_Countries` FOREIGN KEY (`offCountry`) REFERENCES `countries` (`idCountry`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -150,19 +147,16 @@ CREATE TABLE `positions` (
   `idPosition` int NOT NULL AUTO_INCREMENT,
   `posEmployee` int NOT NULL,
   `posOffice` int NOT NULL,
-  `posName` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `posName` varchar(100) NOT NULL,
   `posYearSalary` decimal(11,2) NOT NULL,
   `posStartDate` date NOT NULL,
   `posEndDate` date DEFAULT NULL,
   PRIMARY KEY (`idPosition`),
-  KEY `idx_positions_employee` (`posEmployee`),
-  KEY `idx_positions_office` (`posOffice`),
-  KEY `idx_positions_dates` (`posStartDate`,`posEndDate`),
-  CONSTRAINT `fk_positions_employees` FOREIGN KEY (`posEmployee`) REFERENCES `employees` (`idEmployee`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_positions_offices` FOREIGN KEY (`posOffice`) REFERENCES `offices` (`idOffice`) ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT `chk_positions_dates` CHECK (((`posEndDate` is null) or (`posEndDate` >= `posStartDate`))),
-  CONSTRAINT `chk_positions_salary` CHECK ((`posYearSalary` >= 0.00))
-) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `fk_Positions_Employees1_idx` (`posEmployee`),
+  KEY `fk_Positions_Offices1_idx` (`posOffice`),
+  CONSTRAINT `fk_Positions_Employees1` FOREIGN KEY (`posEmployee`) REFERENCES `employees` (`idEmployee`),
+  CONSTRAINT `fk_Positions_Offices1` FOREIGN KEY (`posOffice`) REFERENCES `offices` (`idOffice`)
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -184,4 +178,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-11-09 17:57:48
+-- Dump completed on 2026-11-09 22:41:34

@@ -10,7 +10,7 @@ namespace GestionNominas.Persistence
     {
         public static string Server { get; set; } = "localhost";
         public static uint Port { get; set; } = 3306;
-        public static string Database { get; set; } = "nominas_db";
+        public static string Database { get; set; } = "company";
         public static string UserId { get; set; } = "root";
         public static string Password { get; set; } = "root";
         public static string CharacterSet { get; set; } = "utf8mb4";

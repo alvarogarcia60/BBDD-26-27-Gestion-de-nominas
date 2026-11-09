@@ -1,5 +1,5 @@
 -- =============================================================================
--- SCRIPT DE CARGA DE DATOS DE PRUEBA (SEED DATA): nominas_db
+-- SCRIPT DE CARGA DE DATOS DE PRUEBA (SEED DATA): company
 -- Asignatura: Bases de Datos - Grado en Ingeniería Informática
 -- Requisitos mínimos exigidos:
 --   • 5 Países (Countries)
@@ -9,7 +9,7 @@
 --   • 100 Pagos de nóminas (MonthlyPayments: 20 empleados x 5 periodos históricos)
 -- =============================================================================
 
-USE nominas_db;
+USE company;
 
 -- -----------------------------------------------------------------------------
 -- 1. PAÍSES (5 países)

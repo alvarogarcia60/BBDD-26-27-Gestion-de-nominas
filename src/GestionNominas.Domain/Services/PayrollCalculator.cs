@@ -74,7 +74,7 @@ namespace GestionNominas.Domain.Services
             if (MonthlyPayment.PeriodAlreadyGenerated(year, month))
                 throw new InvalidOperationException(
                     $"Las nóminas del periodo {year}/{month:D2} ya fueron generadas. " +
-                    "Elimínelas antes de volver a calcular.");
+                    "No se ha modificado la información existente.");
 
             // ── 4. Variables de contexto del mes ────────────────────────────
             int      daysInMonth     = DateTime.DaysInMonth(year, month);
@@ -145,70 +145,53 @@ namespace GestionNominas.Domain.Services
                     // Trienios = bloques completos de 1095 días trabajados
                     int trienios = historicalDays / 1095;
 
-                    // ── 7c. Cálculo acumulado de salario para el mes ─────────
-                    decimal totalGross      = 0m;
-                    decimal totalNet        = 0m;
-                    decimal weightedBonus   = 0m; // para el promedio ponderado
-                    int     totalDaysWorked = activeWithDays.Sum(x => x.DaysWorked);
+                    // ── 7c. Una nómina por cada oficina en la que trabajó en el mes ──
+                    // Criterio acordado con el profesor: si el empleado cambia de oficina,
+                    // tiene una nómina por oficina con los días trabajados en cada una.
+                    // Se insertan por orden de llegada a cada oficina: los informes
+                    // dependen de ese orden (ver MonthlyPayment.PaymentOfficeSql).
+                    var officeGroups = activeWithDays
+                        .GroupBy(x => x.Position.Office.IdOffice)
+                        .OrderBy(g => g.Min(x => x.Position.StartDate));
 
-                    foreach (var item in activeWithDays)
+                    foreach (var officeGroup in officeGroups)
                     {
-                        Position pos        = item.Position;
-                        int      daysWorked = item.DaysWorked;
+                        Office office = officeGroup.First().Position.Office;
 
-                        // Salario base proporcional al tiempo trabajado en el mes
-                        decimal baseSalaryForPeriod =
-                            (pos.YearSalary / 12m) *
-                            ((decimal)daysWorked / (decimal)daysInMonth);
+                        // Salario base proporcional a los días de cada puesto en esta oficina
+                        decimal baseSalary = officeGroup.Sum(x =>
+                            (x.Position.YearSalary / 12m) *
+                            ((decimal)x.DaysWorked / (decimal)daysInMonth));
 
-                        // Bonus aplicado según oficina del puesto (en %)
-                        decimal bonusRate = (decimal)trienios * pos.Office.ThreeYearBonus;
+                        // Bonus de la oficina multiplicado por los trienios completos (en %)
+                        decimal bonusRate = (decimal)trienios * office.ThreeYearBonus;
 
-                        // Salario bruto = base * (1 + bonusRate/100)
-                        decimal grossForPeriod = baseSalaryForPeriod * (1m + bonusRate / 100m);
+                        decimal gross = baseSalary * (1m + bonusRate / 100m);
+                        decimal net   = gross * (1m - office.Country.TaxBase / 100m);
 
-                        // Impuesto del país de la oficina del puesto
-                        decimal taxRate = pos.Office.Country.TaxBase;
+                        // ── 7d. Insertar nómina en la BD (dentro de la transacción)
+                        MonthlyPayment payment = new MonthlyPayment
+                        {
+                            Employee     = employee,
+                            Year         = year,
+                            Month        = month,
+                            SalaryGross  = Math.Round(gross, 2, MidpointRounding.AwayFromZero),
+                            SalaryNet    = Math.Round(net, 2, MidpointRounding.AwayFromZero),
+                            BonusApplied = Math.Round(bonusRate, 2, MidpointRounding.AwayFromZero)
+                        };
 
-                        // Salario neto = bruto * (1 - taxRate/100)
-                        decimal netForPeriod = grossForPeriod * (1m - taxRate / 100m);
-
-                        totalGross    += grossForPeriod;
-                        totalNet      += netForPeriod;
-                        weightedBonus += bonusRate * daysWorked;
+                        payment.Insert();
+                        result.GeneratedPayments.Add(payment);
                     }
-
-                    // Bonus promedio ponderado (ponderado por días trabajados en cada puesto)
-                    decimal avgBonusApplied = totalDaysWorked > 0
-                        ? weightedBonus / (decimal)totalDaysWorked
-                        : 0m;
-
-                    // ── 7d. Redondeo a 2 decimales ───────────────────────────
-                    totalGross      = Math.Round(totalGross,      2, MidpointRounding.AwayFromZero);
-                    totalNet        = Math.Round(totalNet,        2, MidpointRounding.AwayFromZero);
-                    avgBonusApplied = Math.Round(avgBonusApplied, 2, MidpointRounding.AwayFromZero);
-
-                    // ── 7e. Insertar nómina en la BD (dentro de la transacción)
-                    MonthlyPayment payment = new MonthlyPayment
-                    {
-                        Employee     = employee,
-                        Year         = year,
-                        Month        = month,
-                        SalaryGross  = totalGross,
-                        SalaryNet    = totalNet,
-                        BonusApplied = avgBonusApplied
-                    };
-
-                    payment.Insert();
-                    result.GeneratedPayments.Add(payment);
                 }
 
                 // ── 8. Todo correcto: confirmar transacción ──────────────────
                 broker.CommitTransaction();
                 result.Success                = true;
-                result.ProcessedEmployeesCount = result.GeneratedPayments.Count;
+                result.ProcessedEmployeesCount =
+                    result.GeneratedPayments.Select(p => p.Employee.IdEmployee).Distinct().Count();
                 result.Message =
-                    $"Nóminas del periodo {year}/{month:D2} generadas correctamente " +
+                    $"Se han generado {result.GeneratedPayments.Count} nómina(s) del periodo {year}/{month:D2} " +
                     $"para {result.ProcessedEmployeesCount} empleado(s).";
             }
             catch (Exception ex)

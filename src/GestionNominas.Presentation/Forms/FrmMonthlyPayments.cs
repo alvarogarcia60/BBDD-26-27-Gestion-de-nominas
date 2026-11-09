@@ -17,7 +17,6 @@ namespace GestionNominas.Presentation.Forms
         private ComboBox      cmbMonth       = null!;
         private Button        btnGenerate    = null!;
         private Button        btnConsult     = null!;
-        private Button        btnDeletePeriod = null!;
         private DataGridView  dgvPayments    = null!;
         private Label         lblSummary     = null!;
         private Panel         panelTop       = null!;
@@ -45,7 +44,7 @@ namespace GestionNominas.Presentation.Forms
             panelTop = new Panel
             {
                 Dock      = DockStyle.Top,
-                Height    = 120,
+                Height    = 92,
                 BackColor = Color.FromArgb(248, 249, 250),
                 Padding   = new Padding(15, 12, 15, 0)
             };
@@ -101,22 +100,11 @@ namespace GestionNominas.Presentation.Forms
             };
             btnConsult.Click += (s, e) => LoadPayments();
 
-            btnDeletePeriod = new Button
-            {
-                Text      = "🗑  Eliminar Nóminas del Periodo",
-                Location  = new Point(380, 58),
-                Width     = 250, Height = 32,
-                BackColor = Color.FromArgb(185, 28, 28),
-                ForeColor = Color.White,
-                Font      = new Font("Segoe UI", 9F)
-            };
-            btnDeletePeriod.Click += BtnDeletePeriod_Click;
-
             // ── Etiqueta de resumen ───────────────────────────────────────
             lblSummary = new Label
             {
                 Text      = "Seleccione un mes anterior al mes actual para generar o consultar las nóminas.",
-                Location  = new Point(15, 92),
+                Location  = new Point(15, 62),
                 AutoSize  = true,
                 ForeColor = Color.DarkSlateGray,
                 Font      = new Font("Segoe UI", 8.5F, FontStyle.Italic)
@@ -125,7 +113,7 @@ namespace GestionNominas.Presentation.Forms
             panelTop.Controls.AddRange(new Control[]
             {
                 lblYear, numYear, lblMonth, cmbMonth,
-                btnGenerate, btnConsult, btnDeletePeriod, lblSummary
+                btnGenerate, btnConsult, lblSummary
             });
 
             // ── DataGridView ──────────────────────────────────────────────
@@ -170,7 +158,7 @@ namespace GestionNominas.Presentation.Forms
             // Confirmación antes de lanzar el proceso masivo
             var confirm = MessageBox.Show(
                 $"¿Desea generar las nóminas para el periodo {year}-{month:D2}?\n\n" +
-                "Esta acción insertará un registro de nómina por cada empleado activo en ese mes. " +
+                "Esta acción insertará una nómina por cada empleado activo en ese mes y por cada oficina en la que haya trabajado. " +
                 "Si el periodo ya fue generado, la operación será rechazada.",
                 "Confirmar Generación de Nóminas",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question);
@@ -222,52 +210,6 @@ namespace GestionNominas.Presentation.Forms
         }
 
         // ────────────────────────────────────────────────────────────────────
-        // Eliminar nóminas de un periodo
-        // ────────────────────────────────────────────────────────────────────
-
-        private void BtnDeletePeriod_Click(object? sender, EventArgs e)
-        {
-            int year  = (int)numYear.Value;
-            int month = cmbMonth.SelectedIndex + 1;
-
-            try
-            {
-                var payments = MonthlyPayment.ReadByPeriod(year, month);
-                if (payments.Count == 0)
-                {
-                    MessageBox.Show(
-                        $"No hay nóminas registradas para el periodo {year}-{month:D2}.",
-                        "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                var confirm = MessageBox.Show(
-                    $"¿Está seguro de que desea ELIMINAR las {payments.Count} nóminas del periodo {year}-{month:D2}?\n\n" +
-                    "Esta acción no se puede deshacer.",
-                    "Confirmar Eliminación",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-                if (confirm != DialogResult.Yes) return;
-
-                // Borrado en una única sentencia: o se eliminan todas o ninguna
-                int deleted = MonthlyPayment.DeleteByPeriod(year, month);
-
-                MessageBox.Show(
-                    $"{deleted} nóminas eliminadas del periodo {year}-{month:D2}.",
-                    "Eliminación Completada", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                lblSummary.Text = $"Periodo {year}-{month:D2}: nóminas eliminadas.";
-                dgvPayments.DataSource = null;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"Error al eliminar nóminas:\n{ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        // ────────────────────────────────────────────────────────────────────
         // Consultar nóminas existentes
         // ────────────────────────────────────────────────────────────────────
 
@@ -284,6 +226,7 @@ namespace GestionNominas.Presentation.Forms
                 var table = new System.Data.DataTable();
                 table.Columns.Add("ID",              typeof(int));
                 table.Columns.Add("Empleado",        typeof(string));
+                table.Columns.Add("Oficina",         typeof(string));
                 table.Columns.Add("Año",             typeof(int));
                 table.Columns.Add("Mes",             typeof(int));
                 table.Columns.Add("Bruto (€)",       typeof(decimal));
@@ -291,7 +234,7 @@ namespace GestionNominas.Presentation.Forms
                 table.Columns.Add("Bonus Aplicado %",typeof(decimal));
 
                 foreach (var p in payments)
-                    table.Rows.Add(p.IdMonthlyPayment, p.Employee.Name,
+                    table.Rows.Add(p.IdMonthlyPayment, p.Employee.Name, p.OfficeName,
                                    p.Year, p.Month,
                                    p.SalaryGross, p.SalaryNet, p.BonusApplied);
 

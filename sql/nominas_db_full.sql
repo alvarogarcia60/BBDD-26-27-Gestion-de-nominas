@@ -1,139 +1,107 @@
 -- =============================================================================
--- SCRIPT DE CREACIÓN DE BASE DE DATOS: nominas_db
+-- SCRIPT DE CREACIÓN DE BASE DE DATOS: company
 -- Asignatura: Bases de Datos - Grado en Ingeniería Informática
 -- Proyecto: Aplicación de Nóminas (Laboratorio 2025/2026)
--- Motor: MySQL 8.0+ / MariaDB 10.5+ (Motor de almacenamiento InnoDB)
--- Codificación: UTF-8 (utf8mb4_unicode_ci)
+-- Esquema: idéntico al modelo oficial facilitado por el profesor (company.mwb).
+--          No se añaden restricciones (UNIQUE, CHECK...) que no estén en el modelo.
 -- =============================================================================
 
-DROP DATABASE IF EXISTS nominas_db;
-CREATE DATABASE nominas_db
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS company;
+CREATE DATABASE company
+  DEFAULT CHARACTER SET utf8
+  COLLATE utf8_general_ci;
 
-USE nominas_db;
+USE company;
 
 -- -----------------------------------------------------------------------------
 -- 1. TABLA: Countries
--- Almacena los países donde la empresa tiene presencia u origen de empleados.
--- idCountry: Código de 3 caracteres alfabéticos (ej. ESP, FRA).
--- couTaxBase: Porcentaje mensual de impuestos aplicable en el país.
 -- -----------------------------------------------------------------------------
 CREATE TABLE Countries (
     idCountry   CHAR(3)        NOT NULL,
     couName     VARCHAR(120)   NOT NULL,
     couTaxBase  DECIMAL(4,2)   NOT NULL,
-    CONSTRAINT pk_countries PRIMARY KEY (idCountry),
-    CONSTRAINT chk_couTaxBase CHECK (couTaxBase >= 0.00 AND couTaxBase <= 100.00)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    PRIMARY KEY (idCountry)
+) ENGINE=InnoDB;
 
 -- -----------------------------------------------------------------------------
 -- 2. TABLA: Offices
--- Almacena las sedes y oficinas físicas de la empresa en distintas ciudades.
--- offThreeYearBonus: Porcentaje base de bonus por trienio aplicable en la sede.
 -- -----------------------------------------------------------------------------
 CREATE TABLE Offices (
-    idOffice           INT AUTO_INCREMENT NOT NULL,
-    offCountry         CHAR(3)            NOT NULL,
-    offCity            VARCHAR(60)        NOT NULL,
-    offAddress         VARCHAR(120)       NOT NULL,
-    offThreeYearBonus  DECIMAL(4,2)       NOT NULL,
-    CONSTRAINT pk_offices PRIMARY KEY (idOffice),
-    CONSTRAINT fk_offices_countries FOREIGN KEY (offCountry) 
-        REFERENCES Countries (idCountry) 
-        ON UPDATE CASCADE 
-        ON DELETE RESTRICT,
-    CONSTRAINT chk_offThreeYearBonus CHECK (offThreeYearBonus >= 0.00 AND offThreeYearBonus <= 100.00)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX idx_offices_country ON Offices (offCountry);
+    idOffice           INT            NOT NULL AUTO_INCREMENT,
+    offCountry         CHAR(3)        NOT NULL,
+    offCity            VARCHAR(60)    NOT NULL,
+    offAddress         VARCHAR(120)   NOT NULL,
+    offThreeYearBonus  DECIMAL(4,2)   NOT NULL,
+    PRIMARY KEY (idOffice),
+    INDEX fk_Offices_Countries_idx (offCountry ASC),
+    CONSTRAINT fk_Offices_Countries FOREIGN KEY (offCountry)
+        REFERENCES Countries (idCountry)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+) ENGINE=InnoDB;
 
 -- -----------------------------------------------------------------------------
 -- 3. TABLA: Employees
--- Almacena la información de los trabajadores de la multinacional.
--- empCountry: País de residencia u origen del trabajador.
--- empIBAN: Cuenta bancaria para el abono de la nómina (única por empleado).
 -- -----------------------------------------------------------------------------
 CREATE TABLE Employees (
-    idEmployee  INT AUTO_INCREMENT NOT NULL,
-    empName     VARCHAR(120)       NOT NULL,
-    empCountry  CHAR(3)            NOT NULL,
-    empIBAN     VARCHAR(34)        NOT NULL,
-    CONSTRAINT pk_employees PRIMARY KEY (idEmployee),
-    CONSTRAINT fk_employees_countries FOREIGN KEY (empCountry) 
-        REFERENCES Countries (idCountry) 
-        ON UPDATE CASCADE 
-        ON DELETE RESTRICT,
-    CONSTRAINT uq_employees_iban UNIQUE KEY (empIBAN)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX idx_employees_country ON Employees (empCountry);
+    idEmployee  INT            NOT NULL AUTO_INCREMENT,
+    empName     VARCHAR(120)   NOT NULL,
+    empCountry  CHAR(3)        NOT NULL,
+    empIBAN     VARCHAR(34)    NOT NULL,
+    PRIMARY KEY (idEmployee),
+    INDEX fk_Employees_Countries1_idx (empCountry ASC),
+    CONSTRAINT fk_Employees_Countries1 FOREIGN KEY (empCountry)
+        REFERENCES Countries (idCountry)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+) ENGINE=InnoDB;
 
 -- -----------------------------------------------------------------------------
 -- 4. TABLA: Positions
--- Representa los contratos / puestos asignados a cada empleado a lo largo del tiempo.
--- posEndDate: Si es NULL, indica que el empleado ocupa actualmente dicho puesto.
--- Si tiene valor, debe ser en el pasado y no solaparse con otros periodos del mismo empleado.
 -- -----------------------------------------------------------------------------
 CREATE TABLE Positions (
-    idPosition     INT AUTO_INCREMENT NOT NULL,
-    posEmployee    INT                NOT NULL,
-    posOffice      INT                NOT NULL,
-    posName        VARCHAR(100)       NOT NULL,
-    posYearSalary  DECIMAL(11,2)      NOT NULL,
-    posStartDate   DATE               NOT NULL,
-    posEndDate     DATE               NULL,
-    CONSTRAINT pk_positions PRIMARY KEY (idPosition),
-    CONSTRAINT fk_positions_employees FOREIGN KEY (posEmployee) 
-        REFERENCES Employees (idEmployee) 
-        ON UPDATE CASCADE 
-        ON DELETE CASCADE,
-    CONSTRAINT fk_positions_offices FOREIGN KEY (posOffice) 
-        REFERENCES Offices (idOffice) 
-        ON UPDATE CASCADE 
-        ON DELETE RESTRICT,
-    CONSTRAINT chk_positions_salary CHECK (posYearSalary >= 0.00),
-    CONSTRAINT chk_positions_dates CHECK (posEndDate IS NULL OR posEndDate >= posStartDate)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX idx_positions_employee ON Positions (posEmployee);
-CREATE INDEX idx_positions_office ON Positions (posOffice);
-CREATE INDEX idx_positions_dates ON Positions (posStartDate, posEndDate);
+    idPosition     INT             NOT NULL AUTO_INCREMENT,
+    posEmployee    INT             NOT NULL,
+    posOffice      INT             NOT NULL,
+    posName        VARCHAR(100)    NOT NULL,
+    posYearSalary  DECIMAL(11,2)   NOT NULL,
+    posStartDate   DATE            NOT NULL,
+    posEndDate     DATE            NULL,
+    PRIMARY KEY (idPosition),
+    INDEX fk_Positions_Employees1_idx (posEmployee ASC),
+    INDEX fk_Positions_Offices1_idx (posOffice ASC),
+    CONSTRAINT fk_Positions_Employees1 FOREIGN KEY (posEmployee)
+        REFERENCES Employees (idEmployee)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION,
+    CONSTRAINT fk_Positions_Offices1 FOREIGN KEY (posOffice)
+        REFERENCES Offices (idOffice)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+) ENGINE=InnoDB;
 
 -- -----------------------------------------------------------------------------
 -- 5. TABLA: MonthlyPayments
--- Almacena las nóminas mensuales devengadas y abonadas a los trabajadores.
--- paySalaryGross: Salario mensual bruto (proporcional + bonus por trienios).
--- paySalaryNet: Salario neto mensual (bruto menos retención del país de la oficina).
--- payBonusApplied: Porcentaje de bonus aplicado en la nómina.
--- Restricción UNIQUE en (payEmployee, payYear, payMonth) para impedir pagos duplicados.
 -- -----------------------------------------------------------------------------
 CREATE TABLE MonthlyPayments (
-    idMonthlyPayment  INT AUTO_INCREMENT NOT NULL,
-    payEmployee       INT                NOT NULL,
-    payYear           INT                NOT NULL,
-    payMonth          INT                NOT NULL,
-    paySalaryGross    DECIMAL(11,2)      NOT NULL,
-    paySalaryNet      DECIMAL(11,2)      NOT NULL,
-    payBonusApplied   DECIMAL(4,2)       NOT NULL,
-    CONSTRAINT pk_monthlypayments PRIMARY KEY (idMonthlyPayment),
-    CONSTRAINT fk_monthlypayments_employees FOREIGN KEY (payEmployee) 
-        REFERENCES Employees (idEmployee) 
-        ON UPDATE CASCADE 
-        ON DELETE CASCADE,
-    CONSTRAINT uq_monthlypayments_period UNIQUE KEY (payEmployee, payYear, payMonth),
-    CONSTRAINT chk_monthlypayments_month CHECK (payMonth BETWEEN 1 AND 12),
-    CONSTRAINT chk_monthlypayments_gross CHECK (paySalaryGross >= 0.00),
-    CONSTRAINT chk_monthlypayments_net CHECK (paySalaryNet >= 0.00),
-    CONSTRAINT chk_monthlypayments_bonus CHECK (payBonusApplied >= 0.00)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX idx_monthlypayments_period ON MonthlyPayments (payYear, payMonth);
-CREATE INDEX idx_monthlypayments_employee ON MonthlyPayments (payEmployee);
+    idMonthlyPayment  INT             NOT NULL AUTO_INCREMENT,
+    payEmployee       INT             NOT NULL,
+    payYear           INT             NOT NULL,
+    payMonth          INT             NOT NULL,
+    paySalaryGross    DECIMAL(11,2)   NOT NULL,
+    paySalaryNet      DECIMAL(11,2)   NOT NULL,
+    payBonusApplied   DECIMAL(4,2)    NOT NULL,
+    PRIMARY KEY (idMonthlyPayment),
+    INDEX fk_MonthlySalaryPayments_Employees1_idx (payEmployee ASC),
+    CONSTRAINT fk_MonthlySalaryPayments_Employees1 FOREIGN KEY (payEmployee)
+        REFERENCES Employees (idEmployee)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+) ENGINE=InnoDB;
 
 
 -- =============================================================================
--- SCRIPT DE CARGA DE DATOS DE PRUEBA (SEED DATA): nominas_db
+-- SCRIPT DE CARGA DE DATOS DE PRUEBA (SEED DATA): company
 -- Asignatura: Bases de Datos - Grado en Ingeniería Informática
 -- Requisitos mínimos exigidos:
 --   • 5 Países (Countries)
@@ -143,7 +111,7 @@ CREATE INDEX idx_monthlypayments_employee ON MonthlyPayments (payEmployee);
 --   • 100 Pagos de nóminas (MonthlyPayments: 20 empleados x 5 periodos históricos)
 -- =============================================================================
 
-USE nominas_db;
+USE company;
 
 -- -----------------------------------------------------------------------------
 -- 1. PAÍSES (5 países)

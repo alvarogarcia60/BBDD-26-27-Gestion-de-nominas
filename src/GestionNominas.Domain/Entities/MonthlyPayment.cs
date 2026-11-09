@@ -57,6 +57,12 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public decimal BonusApplied { get; set; }
 
+        /// <summary>
+        /// Ciudad de la oficina a la que corresponde la nómina. No es una columna de la tabla:
+        /// se deduce de los puestos del empleado (ver <see cref="PaymentOfficeSql"/>).
+        /// </summary>
+        public string OfficeName { get; set; } = string.Empty;
+
         #endregion
 
         #region Constructores
@@ -209,53 +215,24 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<MonthlyPayment> ReadByPeriod(int year, int month, int? officeId = null)
         {
-            string sql;
             var parameters = new Dictionary<string, object?>
             {
                 { "@year", year },
                 { "@month", month }
             };
 
+            string officeFilter = string.Empty;
             if (officeId.HasValue && officeId.Value > 0)
             {
-                // La nómina se asigna a la oficina en la que el empleado trabajó más días
-                // durante ese mes (la misma regla que usan los informes de gasto), de modo
-                // que no aparezcan empleados que estuvieron en la oficina en otros periodos.
-                sql = $@"SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth,
-                                m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                                e.empName, e.empCountry, e.empIBAN,
-                                c.couName, c.couTaxBase
-                        FROM MonthlyPayments m
-                        INNER JOIN Employees e ON m.payEmployee = e.idEmployee
-                        INNER JOIN Countries c ON e.empCountry = c.idCountry
-                        INNER JOIN ({PredominantOfficeSql}) po ON po.posEmployee = m.payEmployee
-                        WHERE m.payYear = @year AND m.payMonth = @month AND po.posOffice = @officeId
-                        ORDER BY m.paySalaryGross DESC;";
+                officeFilter = "AND po.posOffice = @officeId";
                 parameters.Add("@officeId", officeId.Value);
-                parameters.Add("@firstDay", new DateTime(year, month, 1));
-                parameters.Add("@lastDay", new DateTime(year, month, DateTime.DaysInMonth(year, month)));
-            }
-            else
-            {
-                sql = @"SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth, 
-                               m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                               e.empName, e.empCountry, e.empIBAN,
-                               c.couName, c.couTaxBase
-                        FROM MonthlyPayments m
-                        INNER JOIN Employees e ON m.payEmployee = e.idEmployee
-                        INNER JOIN Countries c ON e.empCountry = c.idCountry
-                        WHERE m.payYear = @year AND m.payMonth = @month
-                        ORDER BY m.paySalaryGross DESC;";
             }
 
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            var list = new List<MonthlyPayment>();
+            string sql = $@"{SelectWithOfficeSql}
+                            WHERE m.payYear = @year AND m.payMonth = @month {officeFilter}
+                            ORDER BY m.paySalaryGross DESC;";
 
-            foreach (DataRow row in dt.Rows)
-            {
-                list.Add(MapFromRow(row));
-            }
-            return list;
+            return MapRows(DBBroker.GetInstance().ExecuteQuery(sql, parameters));
         }
 
         /// <summary>
@@ -263,24 +240,21 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<MonthlyPayment> ReadByEmployee(int employeeId)
         {
-            string sql = @"SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth, 
-                                  m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                                  e.empName, e.empCountry, e.empIBAN,
-                                  c.couName, c.couTaxBase
-                           FROM MonthlyPayments m
-                           INNER JOIN Employees e ON m.payEmployee = e.idEmployee
-                           INNER JOIN Countries c ON e.empCountry = c.idCountry
-                           WHERE m.payEmployee = @employeeId
-                           ORDER BY m.payYear DESC, m.payMonth DESC;";
+            string sql = $@"{SelectWithOfficeSql}
+                            WHERE m.payEmployee = @employeeId
+                            ORDER BY m.payYear DESC, m.payMonth DESC, m.idMonthlyPayment ASC;";
 
             var parameters = new Dictionary<string, object?>
             {
                 { "@employeeId", employeeId }
             };
 
-            DataTable dt = DBBroker.GetInstance().ExecuteQuery(sql, parameters);
-            var list = new List<MonthlyPayment>();
+            return MapRows(DBBroker.GetInstance().ExecuteQuery(sql, parameters));
+        }
 
+        private static List<MonthlyPayment> MapRows(DataTable dt)
+        {
+            var list = new List<MonthlyPayment>();
             foreach (DataRow row in dt.Rows)
             {
                 list.Add(MapFromRow(row));
@@ -289,41 +263,51 @@ namespace GestionNominas.Domain.Entities
         }
 
         /// <summary>
-        /// Subconsulta SQL que devuelve, para cada empleado activo entre @firstDay y @lastDay,
-        /// una única fila con la oficina en la que trabajó más días en ese intervalo
-        /// (en caso de empate, la del puesto más reciente). Columnas: posEmployee, posOffice.
+        /// Subconsulta SQL que devuelve la oficina de cada nómina (idMonthlyPayment, posOffice).
+        /// El esquema oficial no guarda la oficina en MonthlyPayments, así que se deduce: un empleado
+        /// tiene una nómina por oficina en el mes, generadas por orden de llegada a cada oficina,
+        /// de modo que la N-ésima nómina del mes corresponde a la N-ésima oficina en la que trabajó.
+        /// Requiere que los puestos de ese mes no se modifiquen después de generar las nóminas.
         /// </summary>
-        internal const string PredominantOfficeSql = @"
-            SELECT ranked.posEmployee, ranked.posOffice
+        internal const string PaymentOfficeSql = @"
+            SELECT pay.idMonthlyPayment, oft.posOffice
             FROM (
-                SELECT p.posEmployee, p.posOffice,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY p.posEmployee
-                           ORDER BY DATEDIFF(LEAST(COALESCE(p.posEndDate, @lastDay), @lastDay),
-                                             GREATEST(p.posStartDate, @firstDay)) DESC,
-                                    p.posStartDate DESC
-                       ) AS rn
-                FROM Positions p
-                WHERE p.posStartDate <= @lastDay
-                  AND (p.posEndDate IS NULL OR p.posEndDate >= @firstDay)
-            ) AS ranked
-            WHERE ranked.rn = 1";
+                SELECT idMonthlyPayment, payEmployee, payYear, payMonth,
+                       ROW_NUMBER() OVER (PARTITION BY payEmployee, payYear, payMonth
+                                          ORDER BY idMonthlyPayment) AS seq
+                FROM MonthlyPayments
+            ) AS pay
+            INNER JOIN (
+                SELECT worked.posEmployee, worked.posOffice, worked.payYear, worked.payMonth,
+                       ROW_NUMBER() OVER (PARTITION BY worked.posEmployee, worked.payYear, worked.payMonth
+                                          ORDER BY worked.firstStart) AS seq
+                FROM (
+                    SELECT p.posEmployee, p.posOffice, meses.payYear, meses.payMonth,
+                           MIN(p.posStartDate) AS firstStart
+                    FROM Positions p
+                    INNER JOIN (SELECT DISTINCT payYear, payMonth FROM MonthlyPayments) AS meses
+                        ON  p.posStartDate <= LAST_DAY(MAKEDATE(meses.payYear, 1) + INTERVAL (meses.payMonth - 1) MONTH)
+                        AND (p.posEndDate IS NULL
+                             OR p.posEndDate >= MAKEDATE(meses.payYear, 1) + INTERVAL (meses.payMonth - 1) MONTH)
+                    GROUP BY p.posEmployee, p.posOffice, meses.payYear, meses.payMonth
+                ) AS worked
+            ) AS oft
+                ON  oft.posEmployee = pay.payEmployee
+                AND oft.payYear     = pay.payYear
+                AND oft.payMonth    = pay.payMonth
+                AND oft.seq         = pay.seq";
 
-        /// <summary>
-        /// Elimina en una única sentencia (atómica) todas las nóminas de un año y mes.
-        /// </summary>
-        /// <returns>Número de nóminas eliminadas.</returns>
-        public static int DeleteByPeriod(int year, int month)
-        {
-            string sql = "DELETE FROM MonthlyPayments WHERE payYear = @year AND payMonth = @month;";
-            var parameters = new Dictionary<string, object?>
-            {
-                { "@year", year },
-                { "@month", month }
-            };
-
-            return DBBroker.GetInstance().ExecuteNonQuery(sql, parameters);
-        }
+        private const string SelectWithOfficeSql = @"
+            SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth,
+                   m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
+                   e.empName, e.empCountry, e.empIBAN,
+                   c.couName, c.couTaxBase,
+                   o.offCity
+            FROM MonthlyPayments m
+            INNER JOIN Employees e ON m.payEmployee = e.idEmployee
+            INNER JOIN Countries c ON e.empCountry = c.idCountry
+            LEFT JOIN (" + PaymentOfficeSql + @") AS po ON po.idMonthlyPayment = m.idMonthlyPayment
+            LEFT JOIN Offices o ON o.idOffice = po.posOffice";
 
         /// <summary>
         /// Comprueba si ya se han generado previamente nóminas para el mes y año dados.
@@ -369,7 +353,8 @@ namespace GestionNominas.Domain.Entities
                 Month = Convert.ToInt32(row["payMonth"]),
                 SalaryGross = Convert.ToDecimal(row["paySalaryGross"]),
                 SalaryNet = Convert.ToDecimal(row["paySalaryNet"]),
-                BonusApplied = Convert.ToDecimal(row["payBonusApplied"])
+                BonusApplied = Convert.ToDecimal(row["payBonusApplied"]),
+                OfficeName = row.Table.Columns.Contains("offCity") ? row["offCity"].ToString() ?? string.Empty : string.Empty
             };
         }
 
