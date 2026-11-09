@@ -86,7 +86,7 @@ CREATE TABLE `monthlypayments` (
   `payMonth` int NOT NULL,
   `paySalaryGross` decimal(11,2) NOT NULL,
   `paySalaryNet` decimal(11,2) NOT NULL,
-  `payBonusApplied` decimal(5,2) NOT NULL,
+  `payBonusApplied` decimal(4,2) NOT NULL,
   PRIMARY KEY (`idMonthlyPayment`),
   UNIQUE KEY `uq_monthlypayments_period` (`payEmployee`,`payYear`,`payMonth`),
   KEY `idx_monthlypayments_period` (`payYear`,`payMonth`),
@@ -184,4 +184,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-11-09 17:46:37
+-- Dump completed on 2026-11-09 17:57:48
