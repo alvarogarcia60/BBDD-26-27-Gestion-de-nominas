@@ -115,7 +115,7 @@ CREATE TABLE MonthlyPayments (
     payMonth          INT                NOT NULL,
     paySalaryGross    DECIMAL(11,2)      NOT NULL,
     paySalaryNet      DECIMAL(11,2)      NOT NULL,
-    payBonusApplied   DECIMAL(5,2)       NOT NULL,  -- 5,2: varios trienios pueden superar el 99.99 %
+    payBonusApplied   DECIMAL(4,2)       NOT NULL,
     CONSTRAINT pk_monthlypayments PRIMARY KEY (idMonthlyPayment),
     CONSTRAINT fk_monthlypayments_employees FOREIGN KEY (payEmployee) 
         REFERENCES Employees (idEmployee) 

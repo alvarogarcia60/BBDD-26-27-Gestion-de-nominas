@@ -407,9 +407,9 @@ namespace GestionNominas.Domain.Entities
                 throw new ArgumentOutOfRangeException(nameof(SalaryNet), "El salario neto no puede ser negativo.");
             }
 
-            if (BonusApplied < 0 || BonusApplied > 999.99m)
+            if (BonusApplied < 0 || BonusApplied > 99.99m)
             {
-                throw new ArgumentOutOfRangeException(nameof(BonusApplied), "El bonus aplicado debe estar entre 0.00% y 999.99%.");
+                throw new ArgumentOutOfRangeException(nameof(BonusApplied), "El bonus aplicado debe estar entre 0.00% y 99.99%.");
             }
         }
 
