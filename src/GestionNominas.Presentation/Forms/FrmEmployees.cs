@@ -159,8 +159,7 @@ namespace GestionNominas.Presentation.Forms
         {
             if (string.IsNullOrWhiteSpace(txtIdEmployee.Text)) return;
 
-            var confirm = MessageBox.Show("¿Desea eliminar el empleado seleccionado?\n\n" +
-                "ATENCIÓN: también se eliminarán todos sus puestos y todas sus nóminas registradas.", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var confirm = MessageBox.Show("¿Desea eliminar el empleado seleccionado?", "Confirmar eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (confirm == DialogResult.Yes)
             {
                 try
@@ -172,6 +171,11 @@ namespace GestionNominas.Presentation.Forms
                         ClearForm();
                         LoadData();
                     }
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // Tiene puestos o nóminas asociados: NO se puede eliminar
+                    MessageBox.Show(ex.Message, "No se puede eliminar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
                 catch (Exception ex)
                 {

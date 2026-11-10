@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Company.persistence;
-using static GestionNominas.Domain.Services.SqlFormat;
+using static GestionNominas.Domain.Services.RowReader;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -59,7 +59,7 @@ namespace GestionNominas.Domain.Entities
 
         /// <summary>
         /// Ciudad de la oficina a la que corresponde la nómina. No es una columna de la tabla:
-        /// se deduce de los puestos del empleado (ver <see cref="PaymentOfficeSql"/>).
+        /// se deduce de los puestos del empleado (ver MonthlyPaymentDAO.PaymentOfficeSql).
         /// </summary>
         public string OfficeName { get; set; } = string.Empty;
 
@@ -111,7 +111,12 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (AgenteBD)
+        #region Métodos de Persistencia (delegan en MonthlyPaymentDAO)
+
+        /// <summary>
+        /// DAO con el SQL de la tabla MonthlyPayments. La entidad no accede a la base de datos directamente.
+        /// </summary>
+        private static readonly MonthlyPaymentDAO dao = new MonthlyPaymentDAO();
 
         /// <summary>
         /// Inserta la nómina.
@@ -119,7 +124,7 @@ namespace GestionNominas.Domain.Entities
         public bool Insert()
         {
             Validate();
-            return AgenteBD.GetInstance().Change($"{InsertSql} {SqlValues()};") > 0;
+            return dao.Insert(Employee.IdEmployee, Year, Month, SalaryGross, SalaryNet, BonusApplied) > 0;
         }
 
         /// <summary>
@@ -128,23 +133,15 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static int InsertAll(IReadOnlyCollection<MonthlyPayment> payments)
         {
-            if (payments.Count == 0) return 0;
-
-            var values = new List<string>();
-            foreach (MonthlyPayment payment in payments)
+            var values = new List<(int, int, int, decimal, decimal, decimal)>();
+            foreach (MonthlyPayment p in payments)
             {
-                payment.Validate();
-                values.Add(payment.SqlValues());
+                p.Validate();
+                values.Add((p.Employee.IdEmployee, p.Year, p.Month, p.SalaryGross, p.SalaryNet, p.BonusApplied));
             }
 
-            return AgenteBD.GetInstance().Change($"{InsertSql} {string.Join(", ", values)};");
+            return dao.InsertAll(values);
         }
-
-        private const string InsertSql =
-            "INSERT INTO MonthlyPayments (payEmployee, payYear, payMonth, paySalaryGross, paySalaryNet, payBonusApplied) VALUES";
-
-        private string SqlValues() =>
-            $"({Employee.IdEmployee}, {Year}, {Month}, {SqlNumber(SalaryGross)}, {SqlNumber(SalaryNet)}, {SqlNumber(BonusApplied)})";
 
         /// <summary>
         /// Actualiza una nómina existente.
@@ -152,11 +149,7 @@ namespace GestionNominas.Domain.Entities
         public bool Update()
         {
             Validate();
-
-            string sql = $"UPDATE MonthlyPayments SET payEmployee = {Employee.IdEmployee}, payYear = {Year}, payMonth = {Month}, " +
-                         $"paySalaryGross = {SqlNumber(SalaryGross)}, paySalaryNet = {SqlNumber(SalaryNet)}, " +
-                         $"payBonusApplied = {SqlNumber(BonusApplied)} WHERE idMonthlyPayment = {IdMonthlyPayment};";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Update(IdMonthlyPayment, Employee.IdEmployee, Year, Month, SalaryGross, SalaryNet, BonusApplied) > 0;
         }
 
         /// <summary>
@@ -164,7 +157,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public bool Delete()
         {
-            return AgenteBD.GetInstance().Change($"DELETE FROM MonthlyPayments WHERE idMonthlyPayment = {IdMonthlyPayment};") > 0;
+            return dao.Delete(IdMonthlyPayment) > 0;
         }
 
         /// <summary>
@@ -172,7 +165,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<MonthlyPayment> ReadAll()
         {
-            return ReadList($"{SelectWithOfficeSql} ORDER BY m.payYear DESC, m.payMonth DESC, m.paySalaryGross DESC;");
+            return FromRows(dao.ReadAll());
         }
 
         /// <summary>
@@ -181,11 +174,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<MonthlyPayment> ReadByPeriod(int year, int month, int? officeId = null)
         {
-            string officeFilter = officeId.HasValue && officeId.Value > 0 ? $"AND po.posOffice = {officeId.Value}" : string.Empty;
-
-            return ReadList($@"{SelectWithOfficeSql}
-                               WHERE m.payYear = {year} AND m.payMonth = {month} {officeFilter}
-                               ORDER BY m.paySalaryGross DESC;");
+            return FromRows(dao.ReadByPeriod(year, month, officeId));
         }
 
         /// <summary>
@@ -193,78 +182,31 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<MonthlyPayment> ReadByEmployee(int employeeId)
         {
-            return ReadList($@"{SelectWithOfficeSql}
-                               WHERE m.payEmployee = {employeeId}
-                               ORDER BY m.payYear DESC, m.payMonth DESC, m.idMonthlyPayment ASC;");
+            return FromRows(dao.ReadByEmployee(employeeId));
         }
-
-        private static List<MonthlyPayment> ReadList(string sql)
-        {
-            var list = new List<MonthlyPayment>();
-            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
-            {
-                list.Add(MapFromRow(row));
-            }
-            return list;
-        }
-
-        /// <summary>
-        /// Subconsulta SQL que devuelve la oficina de cada nómina (idMonthlyPayment, posOffice).
-        /// El esquema oficial no guarda la oficina en MonthlyPayments, así que se deduce: un empleado
-        /// tiene una nómina por oficina en el mes, generadas por orden de llegada a cada oficina,
-        /// de modo que la N-ésima nómina del mes corresponde a la N-ésima oficina en la que trabajó.
-        /// Requiere que los puestos de ese mes no se modifiquen después de generar las nóminas.
-        /// </summary>
-        internal const string PaymentOfficeSql = @"
-            SELECT pay.idMonthlyPayment, oft.posOffice
-            FROM (
-                SELECT idMonthlyPayment, payEmployee, payYear, payMonth,
-                       ROW_NUMBER() OVER (PARTITION BY payEmployee, payYear, payMonth
-                                          ORDER BY idMonthlyPayment) AS seq
-                FROM MonthlyPayments
-            ) AS pay
-            INNER JOIN (
-                SELECT worked.posEmployee, worked.posOffice, worked.payYear, worked.payMonth,
-                       ROW_NUMBER() OVER (PARTITION BY worked.posEmployee, worked.payYear, worked.payMonth
-                                          ORDER BY worked.firstStart) AS seq
-                FROM (
-                    SELECT p.posEmployee, p.posOffice, meses.payYear, meses.payMonth,
-                           MIN(p.posStartDate) AS firstStart
-                    FROM Positions p
-                    INNER JOIN (SELECT DISTINCT payYear, payMonth FROM MonthlyPayments) AS meses
-                        ON  p.posStartDate <= LAST_DAY(MAKEDATE(meses.payYear, 1) + INTERVAL (meses.payMonth - 1) MONTH)
-                        AND (p.posEndDate IS NULL
-                             OR p.posEndDate >= MAKEDATE(meses.payYear, 1) + INTERVAL (meses.payMonth - 1) MONTH)
-                    GROUP BY p.posEmployee, p.posOffice, meses.payYear, meses.payMonth
-                ) AS worked
-            ) AS oft
-                ON  oft.posEmployee = pay.payEmployee
-                AND oft.payYear     = pay.payYear
-                AND oft.payMonth    = pay.payMonth
-                AND oft.seq         = pay.seq";
-
-        private const string SelectWithOfficeSql = @"
-            SELECT m.idMonthlyPayment, m.payEmployee, m.payYear, m.payMonth,
-                   m.paySalaryGross, m.paySalaryNet, m.payBonusApplied,
-                   e.empName, e.empCountry, e.empIBAN,
-                   c.couName, c.couTaxBase,
-                   o.offCity
-            FROM MonthlyPayments m
-            INNER JOIN Employees e ON m.payEmployee = e.idEmployee
-            INNER JOIN Countries c ON e.empCountry = c.idCountry
-            LEFT JOIN (" + PaymentOfficeSql + @") AS po ON po.idMonthlyPayment = m.idMonthlyPayment
-            LEFT JOIN Offices o ON o.idOffice = po.posOffice";
 
         /// <summary>
         /// Comprueba si ya se han generado previamente nóminas para el mes y año dados.
         /// </summary>
         public static bool PeriodAlreadyGenerated(int year, int month)
         {
-            string sql = $"SELECT COUNT(*) FROM MonthlyPayments WHERE payYear = {year} AND payMonth = {month};";
-            return ReadInt(AgenteBD.GetInstance().Read(sql)[0][0]) > 0;
+            return dao.CountByPeriod(year, month) > 0;
         }
 
-        private static MonthlyPayment MapFromRow(string[] row)
+        private static List<MonthlyPayment> FromRows(List<string[]> rows)
+        {
+            var list = new List<MonthlyPayment>();
+            foreach (string[] row in rows)
+            {
+                list.Add(FromRow(row));
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Crea el objeto a partir de una fila del DAO, incluido su objeto Employee.
+        /// </summary>
+        private static MonthlyPayment FromRow(string[] row)
         {
             var employee = new Employee
             {

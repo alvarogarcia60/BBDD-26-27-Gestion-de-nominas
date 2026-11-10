@@ -146,7 +146,7 @@ namespace GestionNominas.Domain.Services
                     // Criterio acordado con el profesor: si el empleado cambia de oficina,
                     // tiene una nómina por oficina con los días trabajados en cada una.
                     // Se insertan por orden de llegada a cada oficina: los informes
-                    // dependen de ese orden (ver MonthlyPayment.PaymentOfficeSql).
+                    // dependen de ese orden (ver MonthlyPaymentDAO.PaymentOfficeSql).
                     var officeGroups = activeWithDays
                         .GroupBy(x => x.Position.Office.IdOffice)
                         .OrderBy(g => g.Min(x => x.Position.StartDate));

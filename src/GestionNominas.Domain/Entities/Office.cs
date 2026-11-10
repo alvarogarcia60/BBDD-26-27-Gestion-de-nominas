@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Company.persistence;
-using static GestionNominas.Domain.Services.SqlFormat;
+using static GestionNominas.Domain.Services.RowReader;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -84,12 +84,12 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (AgenteBD)
+        #region Métodos de Persistencia (delegan en OfficeDAO)
 
-        private const string SelectSql = @"SELECT o.idOffice, o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                                  c.couName, c.couTaxBase
-                                           FROM Offices o
-                                           INNER JOIN Countries c ON o.offCountry = c.idCountry";
+        /// <summary>
+        /// DAO con el SQL de la tabla Offices. La entidad no accede a la base de datos directamente.
+        /// </summary>
+        private static readonly OfficeDAO dao = new OfficeDAO();
 
         /// <summary>
         /// Inserta la oficina.
@@ -97,10 +97,7 @@ namespace GestionNominas.Domain.Entities
         public bool Insert()
         {
             Validate();
-
-            string sql = $"INSERT INTO Offices (offCountry, offCity, offAddress, offThreeYearBonus) " +
-                         $"VALUES ({SqlText(Country.IdCountry)}, {SqlText(City.Trim())}, {SqlText(Address.Trim())}, {SqlNumber(ThreeYearBonus)});";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Insert(Country.IdCountry, City.Trim(), Address.Trim(), ThreeYearBonus) > 0;
         }
 
         /// <summary>
@@ -109,11 +106,7 @@ namespace GestionNominas.Domain.Entities
         public bool Update()
         {
             Validate();
-
-            string sql = $"UPDATE Offices SET offCountry = {SqlText(Country.IdCountry)}, offCity = {SqlText(City.Trim())}, " +
-                         $"offAddress = {SqlText(Address.Trim())}, offThreeYearBonus = {SqlNumber(ThreeYearBonus)} " +
-                         $"WHERE idOffice = {IdOffice};";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Update(IdOffice, Country.IdCountry, City.Trim(), Address.Trim(), ThreeYearBonus) > 0;
         }
 
         /// <summary>
@@ -121,13 +114,12 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public bool Delete()
         {
-            string countSql = $"SELECT COUNT(*) FROM Positions WHERE posOffice = {IdOffice};";
-            if (ReadInt(AgenteBD.GetInstance().Read(countSql)[0][0]) > 0)
+            if (dao.CountPositions(IdOffice) > 0)
             {
                 throw new InvalidOperationException("La oficina tiene puestos de trabajo asociados.");
             }
 
-            return AgenteBD.GetInstance().Change($"DELETE FROM Offices WHERE idOffice = {IdOffice};") > 0;
+            return dao.Delete(IdOffice) > 0;
         }
 
         /// <summary>
@@ -136,9 +128,9 @@ namespace GestionNominas.Domain.Entities
         public static List<Office> ReadAll()
         {
             var list = new List<Office>();
-            foreach (string[] row in AgenteBD.GetInstance().Read(SelectSql + " ORDER BY c.couName ASC, o.offCity ASC;"))
+            foreach (string[] row in dao.ReadAll())
             {
-                list.Add(MapFromRow(row));
+                list.Add(FromRow(row));
             }
             return list;
         }
@@ -148,11 +140,14 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static Office? Read(int idOffice)
         {
-            List<string[]> rows = AgenteBD.GetInstance().Read($"{SelectSql} WHERE o.idOffice = {idOffice};");
-            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
+            List<string[]> rows = dao.Read(idOffice);
+            return rows.Count > 0 ? FromRow(rows[0]) : null;
         }
 
-        private static Office MapFromRow(string[] row)
+        /// <summary>
+        /// Crea el objeto a partir de una fila del DAO, incluido su objeto Country.
+        /// </summary>
+        private static Office FromRow(string[] row)
         {
             return new Office
             {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using GestionNominas.Domain.Services;
 using Company.persistence;
-using static GestionNominas.Domain.Services.SqlFormat;
+using static GestionNominas.Domain.Services.RowReader;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -58,7 +58,12 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (AgenteBD)
+        #region Métodos de Persistencia (delegan en CountryDAO)
+
+        /// <summary>
+        /// DAO con el SQL de la tabla Countries. La entidad no accede a la base de datos directamente.
+        /// </summary>
+        private static readonly CountryDAO dao = new CountryDAO();
 
         /// <summary>
         /// Inserta el país. Si no tiene código, lo genera según la regla del enunciado.
@@ -71,10 +76,7 @@ namespace GestionNominas.Domain.Entities
             }
 
             Validate();
-
-            string sql = $"INSERT INTO Countries (idCountry, couName, couTaxBase) " +
-                         $"VALUES ({SqlText(IdCountry.ToUpper().Trim())}, {SqlText(Name.Trim())}, {SqlNumber(TaxBase)});";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Insert(IdCountry.ToUpper().Trim(), Name.Trim(), TaxBase) > 0;
         }
 
         /// <summary>
@@ -83,10 +85,7 @@ namespace GestionNominas.Domain.Entities
         public bool Update()
         {
             Validate();
-
-            string sql = $"UPDATE Countries SET couName = {SqlText(Name.Trim())}, couTaxBase = {SqlNumber(TaxBase)} " +
-                         $"WHERE idCountry = {SqlText(IdCountry.ToUpper().Trim())};";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Update(IdCountry.ToUpper().Trim(), Name.Trim(), TaxBase) > 0;
         }
 
         /// <summary>
@@ -94,16 +93,12 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public bool Delete()
         {
-            string id = SqlText(IdCountry);
-            string countSql = $"SELECT (SELECT COUNT(*) FROM Offices WHERE offCountry = {id}) + " +
-                              $"(SELECT COUNT(*) FROM Employees WHERE empCountry = {id});";
-
-            if (ReadInt(AgenteBD.GetInstance().Read(countSql)[0][0]) > 0)
+            if (dao.CountDependents(IdCountry) > 0)
             {
                 throw new InvalidOperationException("El país tiene oficinas o empleados asociados.");
             }
 
-            return AgenteBD.GetInstance().Change($"DELETE FROM Countries WHERE idCountry = {id};") > 0;
+            return dao.Delete(IdCountry) > 0;
         }
 
         /// <summary>
@@ -112,9 +107,9 @@ namespace GestionNominas.Domain.Entities
         public static List<Country> ReadAll()
         {
             var list = new List<Country>();
-            foreach (string[] row in AgenteBD.GetInstance().Read("SELECT idCountry, couName, couTaxBase FROM Countries ORDER BY couName ASC;"))
+            foreach (string[] row in dao.ReadAll())
             {
-                list.Add(MapFromRow(row));
+                list.Add(FromRow(row));
             }
             return list;
         }
@@ -124,9 +119,8 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static Country? Read(string idCountry)
         {
-            string sql = $"SELECT idCountry, couName, couTaxBase FROM Countries WHERE idCountry = {SqlText(idCountry)};";
-            List<string[]> rows = AgenteBD.GetInstance().Read(sql);
-            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
+            List<string[]> rows = dao.Read(idCountry);
+            return rows.Count > 0 ? FromRow(rows[0]) : null;
         }
 
         /// <summary>
@@ -134,11 +128,13 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static bool Exists(string idCountry)
         {
-            string sql = $"SELECT COUNT(*) FROM Countries WHERE idCountry = {SqlText(idCountry)};";
-            return ReadInt(AgenteBD.GetInstance().Read(sql)[0][0]) > 0;
+            return dao.Count(idCountry) > 0;
         }
 
-        private static Country MapFromRow(string[] row)
+        /// <summary>
+        /// Crea el objeto a partir de una fila del DAO: idCountry, couName, couTaxBase.
+        /// </summary>
+        private static Country FromRow(string[] row)
         {
             return new Country
             {

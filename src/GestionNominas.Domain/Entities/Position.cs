@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Company.persistence;
-using static GestionNominas.Domain.Services.SqlFormat;
+using static GestionNominas.Domain.Services.RowReader;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -102,19 +102,12 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (AgenteBD)
+        #region Métodos de Persistencia (delegan en PositionDAO)
 
-        private const string SelectSql = @"SELECT p.idPosition, p.posEmployee, p.posOffice, p.posName, p.posYearSalary,
-                                                  p.posStartDate, p.posEndDate,
-                                                  e.empName, e.empCountry, e.empIBAN,
-                                                  o.offCountry, o.offCity, o.offAddress, o.offThreeYearBonus,
-                                                  cOffice.couName, cOffice.couTaxBase,
-                                                  cEmp.couName, cEmp.couTaxBase
-                                           FROM Positions p
-                                           INNER JOIN Employees e ON p.posEmployee = e.idEmployee
-                                           INNER JOIN Offices o ON p.posOffice = o.idOffice
-                                           INNER JOIN Countries cOffice ON o.offCountry = cOffice.idCountry
-                                           INNER JOIN Countries cEmp ON e.empCountry = cEmp.idCountry";
+        /// <summary>
+        /// DAO con el SQL de la tabla Positions. La entidad no accede a la base de datos directamente.
+        /// </summary>
+        private static readonly PositionDAO dao = new PositionDAO();
 
         /// <summary>
         /// Inserta el puesto previa validación de reglas de negocio y solapamiento.
@@ -122,11 +115,7 @@ namespace GestionNominas.Domain.Entities
         public bool Insert()
         {
             Validate();
-
-            string sql = $"INSERT INTO Positions (posEmployee, posOffice, posName, posYearSalary, posStartDate, posEndDate) " +
-                         $"VALUES ({Employee.IdEmployee}, {Office.IdOffice}, {SqlText(Name.Trim())}, {SqlNumber(YearSalary)}, " +
-                         $"{SqlDate(StartDate)}, {SqlDateOrNull(EndDate)});";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Insert(Employee.IdEmployee, Office.IdOffice, Name.Trim(), YearSalary, StartDate, EndDate) > 0;
         }
 
         /// <summary>
@@ -135,12 +124,7 @@ namespace GestionNominas.Domain.Entities
         public bool Update()
         {
             Validate();
-
-            string sql = $"UPDATE Positions SET posEmployee = {Employee.IdEmployee}, posOffice = {Office.IdOffice}, " +
-                         $"posName = {SqlText(Name.Trim())}, posYearSalary = {SqlNumber(YearSalary)}, " +
-                         $"posStartDate = {SqlDate(StartDate)}, posEndDate = {SqlDateOrNull(EndDate)} " +
-                         $"WHERE idPosition = {IdPosition};";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Update(IdPosition, Employee.IdEmployee, Office.IdOffice, Name.Trim(), YearSalary, StartDate, EndDate) > 0;
         }
 
         /// <summary>
@@ -148,7 +132,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public bool Delete()
         {
-            return AgenteBD.GetInstance().Change($"DELETE FROM Positions WHERE idPosition = {IdPosition};") > 0;
+            return dao.Delete(IdPosition) > 0;
         }
 
         /// <summary>
@@ -156,7 +140,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<Position> ReadAll()
         {
-            return ReadList(SelectSql + " ORDER BY p.posStartDate DESC;");
+            return FromRows(dao.ReadAll());
         }
 
         /// <summary>
@@ -164,7 +148,7 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static Position? Read(int idPosition)
         {
-            List<Position> list = ReadList($"{SelectSql} WHERE p.idPosition = {idPosition};");
+            List<Position> list = FromRows(dao.Read(idPosition));
             return list.Count > 0 ? list[0] : null;
         }
 
@@ -173,20 +157,23 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static List<Position> ReadByEmployee(int employeeId)
         {
-            return ReadList($"{SelectSql} WHERE p.posEmployee = {employeeId} ORDER BY p.posStartDate ASC;");
+            return FromRows(dao.ReadByEmployee(employeeId));
         }
 
-        private static List<Position> ReadList(string sql)
+        private static List<Position> FromRows(List<string[]> rows)
         {
             var list = new List<Position>();
-            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
+            foreach (string[] row in rows)
             {
-                list.Add(MapFromRow(row));
+                list.Add(FromRow(row));
             }
             return list;
         }
 
-        private static Position MapFromRow(string[] row)
+        /// <summary>
+        /// Crea el objeto a partir de una fila del DAO, incluidos sus objetos Employee y Office.
+        /// </summary>
+        private static Position FromRow(string[] row)
         {
             var employee = new Employee
             {

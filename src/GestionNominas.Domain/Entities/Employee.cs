@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Company.persistence;
-using static GestionNominas.Domain.Services.SqlFormat;
+using static GestionNominas.Domain.Services.RowReader;
 
 namespace GestionNominas.Domain.Entities
 {
@@ -76,12 +76,12 @@ namespace GestionNominas.Domain.Entities
 
         #endregion
 
-        #region Métodos de Persistencia (AgenteBD)
+        #region Métodos de Persistencia (delegan en EmployeeDAO)
 
-        private const string SelectSql = @"SELECT e.idEmployee, e.empName, e.empCountry, e.empIBAN,
-                                                  c.couName, c.couTaxBase
-                                           FROM Employees e
-                                           INNER JOIN Countries c ON e.empCountry = c.idCountry";
+        /// <summary>
+        /// DAO con el SQL de la tabla Employees. La entidad no accede a la base de datos directamente.
+        /// </summary>
+        private static readonly EmployeeDAO dao = new EmployeeDAO();
 
         /// <summary>
         /// Inserta el empleado.
@@ -89,10 +89,7 @@ namespace GestionNominas.Domain.Entities
         public bool Insert()
         {
             Validate();
-
-            string sql = $"INSERT INTO Employees (empName, empCountry, empIBAN) " +
-                         $"VALUES ({SqlText(Name.Trim())}, {SqlText(Country.IdCountry)}, {SqlText(NormalizedIban)});";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Insert(Name.Trim(), Country.IdCountry, NormalizedIban) > 0;
         }
 
         /// <summary>
@@ -101,24 +98,23 @@ namespace GestionNominas.Domain.Entities
         public bool Update()
         {
             Validate();
-
-            string sql = $"UPDATE Employees SET empName = {SqlText(Name.Trim())}, empCountry = {SqlText(Country.IdCountry)}, " +
-                         $"empIBAN = {SqlText(NormalizedIban)} WHERE idEmployee = {IdEmployee};";
-            return AgenteBD.GetInstance().Change(sql) > 0;
+            return dao.Update(IdEmployee, Name.Trim(), Country.IdCountry, NormalizedIban) > 0;
         }
 
         private string NormalizedIban => IBAN.Trim().Replace(" ", "").ToUpper();
 
         /// <summary>
-        /// Elimina el empleado junto con sus nóminas y puestos.
-        /// Las claves foráneas del esquema son NO ACTION, así que hay que borrar antes las filas hijas.
+        /// Elimina el empleado solo si no tiene puestos ni nóminas asociados (criterio del profesor).
         /// </summary>
         public bool Delete()
         {
-            AgenteBD agente = AgenteBD.GetInstance();
-            agente.Change($"DELETE FROM MonthlyPayments WHERE payEmployee = {IdEmployee};");
-            agente.Change($"DELETE FROM Positions WHERE posEmployee = {IdEmployee};");
-            return agente.Change($"DELETE FROM Employees WHERE idEmployee = {IdEmployee};") > 0;
+            if (dao.CountPositionsAndPayments(IdEmployee) > 0)
+            {
+                throw new InvalidOperationException(
+                    "No se puede eliminar el empleado porque tiene puestos de trabajo o nóminas asociados.");
+            }
+
+            return dao.Delete(IdEmployee) > 0;
         }
 
         /// <summary>
@@ -127,9 +123,9 @@ namespace GestionNominas.Domain.Entities
         public static List<Employee> ReadAll()
         {
             var list = new List<Employee>();
-            foreach (string[] row in AgenteBD.GetInstance().Read(SelectSql + " ORDER BY e.empName ASC;"))
+            foreach (string[] row in dao.ReadAll())
             {
-                list.Add(MapFromRow(row));
+                list.Add(FromRow(row));
             }
             return list;
         }
@@ -139,11 +135,14 @@ namespace GestionNominas.Domain.Entities
         /// </summary>
         public static Employee? Read(int idEmployee)
         {
-            List<string[]> rows = AgenteBD.GetInstance().Read($"{SelectSql} WHERE e.idEmployee = {idEmployee};");
-            return rows.Count > 0 ? MapFromRow(rows[0]) : null;
+            List<string[]> rows = dao.Read(idEmployee);
+            return rows.Count > 0 ? FromRow(rows[0]) : null;
         }
 
-        private static Employee MapFromRow(string[] row)
+        /// <summary>
+        /// Crea el objeto a partir de una fila del DAO, incluido su objeto Country.
+        /// </summary>
+        private static Employee FromRow(string[] row)
         {
             return new Employee
             {

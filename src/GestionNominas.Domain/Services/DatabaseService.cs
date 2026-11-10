@@ -17,9 +17,7 @@ namespace GestionNominas.Domain.Services
         {
             try
             {
-                AgenteBD agente = AgenteBD.GetInstance();
-                agente.connect();
-                agente.disconnect();
+                new ConnectionDAO().TestConnection();
                 errorMessage = string.Empty;
                 return true;
             }
@@ -31,7 +29,7 @@ namespace GestionNominas.Domain.Services
         }
 
         /// <summary>
-        /// Descripción legible del destino de conexión (servidor, base de datos y usuario), definido en AgenteBD.
+        /// Descripción legible del destino de conexión (servidor, base de datos y usuario) de la capa de persistencia.
         /// </summary>
         public static string ConnectionDescription => "Servidor: localhost\nBase de datos: Company\nUsuario: root";
 
