@@ -4,15 +4,12 @@ using Company.persistence;
 namespace GestionNominas.Domain.Services
 {
     /// <summary>
-    /// Servicio de Dominio: fachada sobre la conexión a la base de datos, para que la
-    /// capa de presentación no dependa directamente de la capa de persistencia.
+    /// Comprobación de la conexión con la base de datos, para que la presentación
+    /// no tenga que acceder a la capa de persistencia.
     /// </summary>
     public static class DatabaseService
     {
-        /// <summary>
-        /// Comprueba si es posible conectar con la base de datos.
-        /// </summary>
-        /// <param name="errorMessage">Mensaje descriptivo del fallo, si lo hay.</param>
+        /// <summary>Indica si se puede conectar; si no, devuelve el motivo en errorMessage.</summary>
         public static bool TestConnection(out string errorMessage)
         {
             try
@@ -28,14 +25,10 @@ namespace GestionNominas.Domain.Services
             }
         }
 
-        /// <summary>
-        /// Descripción legible del destino de conexión (servidor, base de datos y usuario) de la capa de persistencia.
-        /// </summary>
+        /// <summary>Datos de la conexión, para mostrarlos si falla.</summary>
         public static string ConnectionDescription => "Servidor: localhost\nBase de datos: Company\nUsuario: root";
 
-        /// <summary>
-        /// Nombre de la base de datos y servidor, en una sola línea.
-        /// </summary>
+        /// <summary>Base de datos y servidor, en una sola línea.</summary>
         public static string ShortDescription => "Company en localhost";
     }
 }

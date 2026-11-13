@@ -1,23 +1,20 @@
 using System.Collections.Generic;
+using GestionNominas.Domain.Entities;
 using static Company.persistence.SqlFormat;
 
 namespace Company.persistence
 {
     /// <summary>
-    /// DAO de la tabla MonthlyPayments. Contiene todo el SQL de las nóminas y lo ejecuta con AgenteBD.
-    /// Cada fila se devuelve con las columnas:
-    ///  0 idMonthlyPayment, 1 payEmployee, 2 payYear, 3 payMonth, 4 paySalaryGross, 5 paySalaryNet,
-    ///  6 payBonusApplied, 7 empName, 8 empCountry, 9 empIBAN, 10 couName, 11 couTaxBase (país del empleado),
-    ///  12 offCity (ciudad de la oficina de la nómina).
+    /// Acceso a la tabla MonthlyPayments: ejecuta el SQL con AgenteBD y construye los objetos MonthlyPayment.
+    /// Las lecturas dejan el resultado en Payments o en Total.
     /// </summary>
     internal class MonthlyPaymentDAO
     {
         /// <summary>
-        /// Subconsulta SQL que devuelve la oficina de cada nómina (idMonthlyPayment, posOffice).
-        /// El esquema oficial no guarda la oficina en MonthlyPayments, así que se deduce: un empleado
-        /// tiene una nómina por oficina en el mes, generadas por orden de llegada a cada oficina,
-        /// de modo que la N-ésima nómina del mes corresponde a la N-ésima oficina en la que trabajó.
-        /// Requiere que los puestos de ese mes no se modifiquen después de generar las nóminas.
+        /// Subconsulta con la oficina de cada nómina (idMonthlyPayment, posOffice).
+        /// La tabla MonthlyPayments no guarda la oficina: como las nóminas de un empleado en un mes
+        /// se generan por orden de llegada a cada oficina, la 1.ª nómina del mes corresponde a la
+        /// 1.ª oficina en la que trabajó ese mes, la 2.ª a la 2.ª, etc.
         /// </summary>
         internal const string PaymentOfficeSql = @"
             SELECT pay.idMonthlyPayment, oft.posOffice
@@ -62,72 +59,83 @@ namespace Company.persistence
         private const string InsertSql =
             "INSERT INTO MonthlyPayments (payEmployee, payYear, payMonth, paySalaryGross, paySalaryNet, payBonusApplied) VALUES";
 
-        public List<string[]> ReadAll()
-        {
-            return AgenteBD.GetInstance().Read($"{SelectSql} ORDER BY m.payYear DESC, m.payMonth DESC, m.paySalaryGross DESC;");
-        }
+        /// <summary>Nóminas construidas en la última lectura.</summary>
+        public List<MonthlyPayment> Payments { get; private set; } = new List<MonthlyPayment>();
 
-        /// <summary>Nóminas de un año y mes (opcionalmente de una oficina), de mayor a menor bruto.</summary>
-        public List<string[]> ReadByPeriod(int year, int month, int? idOffice)
+        /// <summary>Resultado del último recuento.</summary>
+        public int Total { get; private set; }
+
+        /// <summary>Lee las nóminas de un año y mes (opcionalmente de una oficina), de mayor a menor bruto.</summary>
+        public void ReadByPeriod(int year, int month, int? idOffice)
         {
             string officeFilter = idOffice.HasValue && idOffice.Value > 0 ? $"AND po.posOffice = {idOffice.Value}" : string.Empty;
 
-            return AgenteBD.GetInstance().Read($@"{SelectSql}
+            Load($@"{SelectSql}
                 WHERE m.payYear = {year} AND m.payMonth = {month} {officeFilter}
                 ORDER BY m.paySalaryGross DESC;");
         }
 
-        /// <summary>Nóminas de un empleado, de la más reciente a la más antigua.</summary>
-        public List<string[]> ReadByEmployee(int idEmployee)
+        /// <summary>Lee las nóminas de un empleado, de la más reciente a la más antigua.</summary>
+        public void ReadByEmployee(int idEmployee)
         {
-            return AgenteBD.GetInstance().Read($@"{SelectSql}
+            Load($@"{SelectSql}
                 WHERE m.payEmployee = {idEmployee}
                 ORDER BY m.payYear DESC, m.payMonth DESC, m.idMonthlyPayment ASC;");
         }
 
-        public int Insert(int idEmployee, int year, int month, decimal gross, decimal net, decimal bonus)
-        {
-            return AgenteBD.GetInstance().Change($"{InsertSql} {Values(idEmployee, year, month, gross, net, bonus)};");
-        }
-
         /// <summary>
-        /// Inserta varias nóminas en una única sentencia: o se guardan todas o ninguna.
-        /// El orden de la lista se conserva en los identificadores generados.
+        /// Inserta varias nóminas en una única sentencia, así se guardan todas o ninguna.
+        /// Devuelve las filas afectadas.
         /// </summary>
-        public int InsertAll(List<(int IdEmployee, int Year, int Month, decimal Gross, decimal Net, decimal Bonus)> payments)
+        public int InsertAll(IReadOnlyCollection<MonthlyPayment> payments)
         {
             if (payments.Count == 0) return 0;
 
             var values = new List<string>();
-            foreach (var p in payments)
+            foreach (MonthlyPayment p in payments)
             {
-                values.Add(Values(p.IdEmployee, p.Year, p.Month, p.Gross, p.Net, p.Bonus));
+                values.Add(Values(p.Employee.IdEmployee, p.Year, p.Month, p.SalaryGross, p.SalaryNet, p.BonusApplied));
             }
 
             return AgenteBD.GetInstance().Change($"{InsertSql} {string.Join(", ", values)};");
         }
 
-        public int Update(int idMonthlyPayment, int idEmployee, int year, int month, decimal gross, decimal net, decimal bonus)
+        /// <summary>Cuenta las nóminas ya generadas para el año y mes.</summary>
+        public void CountByPeriod(int year, int month)
         {
-            return AgenteBD.GetInstance().Change(
-                $"UPDATE MonthlyPayments SET payEmployee = {idEmployee}, payYear = {year}, payMonth = {month}, " +
-                $"paySalaryGross = {SqlNumber(gross)}, paySalaryNet = {SqlNumber(net)}, " +
-                $"payBonusApplied = {SqlNumber(bonus)} WHERE idMonthlyPayment = {idMonthlyPayment};");
-        }
-
-        public int Delete(int idMonthlyPayment)
-        {
-            return AgenteBD.GetInstance().Change($"DELETE FROM MonthlyPayments WHERE idMonthlyPayment = {idMonthlyPayment};");
-        }
-
-        /// <summary>Número de nóminas ya generadas para el año y mes.</summary>
-        public int CountByPeriod(int year, int month)
-        {
-            return ReadCount(AgenteBD.GetInstance().Read(
+            Total = ReadInt(AgenteBD.GetInstance().Read(
                 $"SELECT COUNT(*) FROM MonthlyPayments WHERE payYear = {year} AND payMonth = {month};")[0][0]);
         }
 
         private static string Values(int idEmployee, int year, int month, decimal gross, decimal net, decimal bonus) =>
             $"({idEmployee}, {year}, {month}, {SqlNumber(gross)}, {SqlNumber(net)}, {SqlNumber(bonus)})";
+
+        /// <summary>Ejecuta el SELECT y convierte cada fila en un MonthlyPayment con su Employee.</summary>
+        private void Load(string sql)
+        {
+            Payments = new List<MonthlyPayment>();
+            foreach (string[] row in AgenteBD.GetInstance().Read(sql))
+            {
+                var employee = new Employee
+                {
+                    IdEmployee = ReadInt(row[1]),
+                    Name = row[7],
+                    Country = new Country { IdCountry = row[8], Name = row[10], TaxBase = ReadDecimal(row[11]) },
+                    IBAN = row[9]
+                };
+
+                Payments.Add(new MonthlyPayment
+                {
+                    IdMonthlyPayment = ReadInt(row[0]),
+                    Employee = employee,
+                    Year = ReadInt(row[2]),
+                    Month = ReadInt(row[3]),
+                    SalaryGross = ReadDecimal(row[4]),
+                    SalaryNet = ReadDecimal(row[5]),
+                    BonusApplied = ReadDecimal(row[6]),
+                    OfficeName = row[12]
+                });
+            }
+        }
     }
 }

@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Arquitectura en 3 capas: la presentación solo depende del dominio. -->
-    <ProjectReference Include="..\GestionNominas.Domain\GestionNominas.Domain.csproj" />
+    <!-- Arquitectura en 3 capas: la presentación solo ve las clases públicas del dominio. -->
+    <ProjectReference Include="..\GestionNominas.Core\GestionNominas.Core.csproj" />
   </ItemGroup>
 
 </Project>

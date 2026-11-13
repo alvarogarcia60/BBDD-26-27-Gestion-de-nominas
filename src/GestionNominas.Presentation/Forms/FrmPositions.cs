@@ -91,9 +91,7 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
-            // (La selección automática de la primera fila al cargar la lista NO carga datos,
-            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            // Solo se pasa a modo edición al hacer clic en una fila, para no sobrescribir un registro al dar de alta otro.
             dgvPositions.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvPositions_SelectionChanged(s, e); };
             dgvPositions.DataBindingComplete += (s, e) => ClearForm();
             Shown += (s, e) => ClearForm();

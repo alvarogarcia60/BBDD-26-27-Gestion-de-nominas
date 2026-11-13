@@ -6,11 +6,9 @@ using GestionNominas.Domain.Entities;
 namespace GestionNominas.Domain.Services
 {
     /// <summary>
-    /// Servicio de Dominio: Generador de códigos identificadores de países.
-    /// Implementa el algoritmo requerido en el laboratorio:
-    /// 1. Toma las 3 primeras letras del nombre en mayúsculas (ej. ESP para España).
-    /// 2. Si ya existe en la BD por clave primaria, sustituye la tercera letra por la siguiente letra posible del nombre.
-    ///    Ejemplo: si ya existe Australia (AUS), al insertar Austria toma AUT.
+    /// Genera el código de un país nuevo: las tres primeras letras del nombre en mayúsculas
+    /// (ESP para España). Si ese código ya existe, la tercera letra pasa a ser la siguiente
+    /// letra posible del nombre (si existe AUS, Austria será AUT).
     /// </summary>
     public static class CountryCodeGenerator
     {
@@ -21,7 +19,7 @@ namespace GestionNominas.Domain.Services
                 throw new ArgumentException("El nombre del país no puede estar vacío.");
             }
 
-            // Eliminar diacríticos (acentos) y caracteres no alfabéticos
+            // Solo letras, sin tildes y en mayúsculas
             string cleanName = RemoveDiacritics(countryName).ToUpper();
             var letters = new StringBuilder();
 
@@ -36,11 +34,10 @@ namespace GestionNominas.Domain.Services
             string lettersStr = letters.ToString();
             if (lettersStr.Length < 3)
             {
-                // Rellenar con 'X' si el nombre fuera extremadamente corto (ej. "Do")
                 lettersStr = lettersStr.PadRight(3, 'X');
             }
 
-            // 1. Probar el código estándar con las 3 primeras letras (índices 0, 1, 2)
+            // 1. Las tres primeras letras
             string firstTwo = lettersStr.Substring(0, 2);
             string baseCode = lettersStr.Substring(0, 3);
 
@@ -49,7 +46,7 @@ namespace GestionNominas.Domain.Services
                 return baseCode;
             }
 
-            // 2. Si ya existe, probar las siguientes letras disponibles del nombre a partir del índice 3
+            // 2. Si ya existe, la tercera letra pasa a ser la siguiente letra del nombre
             for (int i = 3; i < lettersStr.Length; i++)
             {
                 string candidate = firstTwo + lettersStr[i];
@@ -59,7 +56,7 @@ namespace GestionNominas.Domain.Services
                 }
             }
 
-            // 3. Si todas las letras del nombre colisionan, probar el abecedario de 'A' a 'Z'
+            // 3. Si todas existen, se prueba con el resto del abecedario
             for (char c = 'A'; c <= 'Z'; c++)
             {
                 string candidate = firstTwo + c;
@@ -69,7 +66,6 @@ namespace GestionNominas.Domain.Services
                 }
             }
 
-            // Fallback genérico
             return baseCode;
         }
 

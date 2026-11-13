@@ -9,14 +9,13 @@ using GestionNominas.Domain.Services;
 namespace GestionNominas.Presentation.Forms
 {
     /// <summary>
-    /// Módulo de Informes. Agrupa los 5 informes exigidos en el enunciado
-    /// en un TabControl con filtros interactivos.
+    /// Los cinco informes del enunciado, cada uno en una pestaña con sus filtros.
     /// </summary>
     public class FrmReports : Form
     {
         private TabControl tabReports = null!;
 
-        // ── Reporte 1: Nóminas de un mes ordenadas de mayor a menor bruto ──
+        // Informe 1: Nóminas de un mes ordenadas de mayor a menor bruto
         private NumericUpDown numR1Year  = null!;
         private ComboBox      cmbR1Month = null!;
         private ComboBox      cmbR1Office = null!;
@@ -24,28 +23,26 @@ namespace GestionNominas.Presentation.Forms
         private DataGridView  dgvR1 = null!;
         private Label         lblR1Total = null!;
 
-        // ── Reporte 2: Histórico nóminas de un empleado ──
+        // Informe 2: Histórico nóminas de un empleado
         private ComboBox     cmbR2Employee = null!;
         private Button       btnR2Filter   = null!;
         private DataGridView dgvR2 = null!;
         private Label        lblR2Info = null!;
 
-        // ── Reporte 3: Empleados por sede y trienios consolidados ──
+        // Informe 3: Empleados por sede y trienios consolidados
         private Button       btnR3Load = null!;
         private DataGridView dgvR3 = null!;
 
-        // ── Reporte 4: Gasto en nóminas por oficina en un mes ──
+        // Informe 4: Gasto en nóminas por oficina en un mes
         private NumericUpDown numR4Year   = null!;
         private ComboBox      cmbR4Month  = null!;
         private Button        btnR4Load   = null!;
         private DataGridView  dgvR4 = null!;
         private Label         lblR4Total  = null!;
 
-        // ── Reporte 5: Gasto en nóminas por país a lo largo de los meses ──
+        // Informe 5: Gasto en nóminas por país a lo largo de los meses
         private Button       btnR5Load = null!;
         private DataGridView dgvR5 = null!;
-
-        // ────────────────────────────────────────────────────────────────────
 
         public FrmReports()
         {
@@ -53,9 +50,7 @@ namespace GestionNominas.Presentation.Forms
             LoadInitialData();
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Construcción de la interfaz
-        // ────────────────────────────────────────────────────────────────────
 
         private void InitializeComponentManual()
         {
@@ -85,7 +80,7 @@ namespace GestionNominas.Presentation.Forms
             UiTheme.Apply(this, "Informes", "Listados de nóminas, antigüedad y gasto por oficina y país");
         }
 
-        // ── Tab 1 ─────────────────────────────────────────────────────────
+        // Pestaña 1
         private void BuildTab1(TabPage tab)
         {
             var pnl = new Panel { Dock = DockStyle.Top, Height = 70, Padding = new Padding(10, 8, 10, 0) };
@@ -128,7 +123,7 @@ namespace GestionNominas.Presentation.Forms
             tab.Controls.Add(pnl);
         }
 
-        // ── Tab 2 ─────────────────────────────────────────────────────────
+        // Pestaña 2
         private void BuildTab2(TabPage tab)
         {
             var pnl = new Panel { Dock = DockStyle.Top, Height = 70, Padding = new Padding(10, 8, 10, 0) };
@@ -157,7 +152,7 @@ namespace GestionNominas.Presentation.Forms
             tab.Controls.Add(pnl);
         }
 
-        // ── Tab 3 ─────────────────────────────────────────────────────────
+        // Pestaña 3
         private void BuildTab3(TabPage tab)
         {
             var pnl = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(10, 10, 10, 0) };
@@ -182,7 +177,7 @@ namespace GestionNominas.Presentation.Forms
             tab.Controls.Add(pnl);
         }
 
-        // ── Tab 4 ─────────────────────────────────────────────────────────
+        // Pestaña 4
         private void BuildTab4(TabPage tab)
         {
             var pnl = new Panel { Dock = DockStyle.Top, Height = 70, Padding = new Padding(10, 8, 10, 0) };
@@ -221,7 +216,7 @@ namespace GestionNominas.Presentation.Forms
             tab.Controls.Add(pnl);
         }
 
-        // ── Tab 5 ─────────────────────────────────────────────────────────
+        // Pestaña 5
         private void BuildTab5(TabPage tab)
         {
             var pnl = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(10, 10, 10, 0) };
@@ -246,7 +241,7 @@ namespace GestionNominas.Presentation.Forms
             tab.Controls.Add(pnl);
         }
 
-        // ── Factory para DataGridViews ─────────────────────────────────────
+        // Tabla de resultados, igual en todas las pestañas
         private static DataGridView BuildGrid() =>
             new DataGridView
             {
@@ -262,15 +257,13 @@ namespace GestionNominas.Presentation.Forms
                 RowHeadersWidth     = 30
             };
 
-        // ────────────────────────────────────────────────────────────────────
         // Carga inicial de combos
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadInitialData()
         {
             try
             {
-                // Combo de oficinas para Reporte 1 (con opción "Todas")
+                // Oficinas del informe 1, con la opción "Todas"
                 var offices = Office.ReadAll();
                 cmbR1Office.Items.Clear();
                 cmbR1Office.Items.Add("— Todas las oficinas —");
@@ -278,7 +271,7 @@ namespace GestionNominas.Presentation.Forms
                     cmbR1Office.Items.Add(off);
                 cmbR1Office.SelectedIndex = 0;
 
-                // Combo de empleados para Reporte 2
+                // Empleados del informe 2
                 var employees = Employee.ReadAll();
                 cmbR2Employee.DataSource    = employees;
                 cmbR2Employee.DisplayMember = "Name";
@@ -292,10 +285,8 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Informe 1: Nóminas del mes ordenadas de mayor a menor sueldo bruto
         //            con filtro opcional por oficina
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport1()
         {
@@ -308,10 +299,10 @@ namespace GestionNominas.Presentation.Forms
                 if (cmbR1Office.SelectedIndex > 0 && cmbR1Office.SelectedItem is Office off)
                     officeId = off.IdOffice;
 
-                // Delega en el método de dominio que ya aplica ORDER BY paySalaryGross DESC
+                // Ya vienen ordenadas de mayor a menor sueldo bruto
                 var list = MonthlyPayment.ReadByPeriod(year, month, officeId);
 
-                // Proyección de columnas legibles para el DataGridView
+                // Tabla con columnas legibles
                 var table = new DataTable();
                 table.Columns.Add("ID",              typeof(int));
                 table.Columns.Add("Empleado",        typeof(string));
@@ -341,9 +332,7 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Informe 2: Histórico de nóminas de un empleado
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport2()
         {
@@ -378,9 +367,7 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Informe 3: Empleados de cada sede con los trienios acumulados hasta hoy
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport3()
         {
@@ -394,9 +381,7 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Informe 4: Gasto total en nóminas de cada oficina en un mes
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport4()
         {
@@ -423,9 +408,7 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Informe 5: Gasto en nóminas por país en cada mes con datos
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadReport5()
         {
@@ -440,12 +423,10 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Utilidades de formato visual
-        // ────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Aplica formato monetario N2 a las columnas indicadas de un DataGridView.
+        /// Formato de moneda (dos decimales, alineado a la derecha) en las columnas indicadas.
         /// </summary>
         private static void FormatMoneyColumns(DataGridView dgv, params string[] columnNames)
         {

@@ -69,9 +69,7 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
-            // (La selección automática de la primera fila al cargar la lista NO carga datos,
-            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            // Solo se pasa a modo edición al hacer clic en una fila, para no sobrescribir un registro al dar de alta otro.
             dgvEmployees.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvEmployees_SelectionChanged(s, e); };
             dgvEmployees.DataBindingComplete += (s, e) => ClearForm();
             Shown += (s, e) => ClearForm();
@@ -174,7 +172,7 @@ namespace GestionNominas.Presentation.Forms
                 }
                 catch (InvalidOperationException ex)
                 {
-                    // Tiene puestos o nóminas asociados: NO se puede eliminar
+                    // Tiene puestos o nóminas asociados: no se puede eliminar
                     MessageBox.Show(ex.Message, "No se puede eliminar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
                 catch (Exception ex)

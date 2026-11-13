@@ -7,14 +7,11 @@ namespace GestionNominas.Presentation
 {
     internal static class Program
     {
-        /// <summary>
-        /// Punto de entrada principal para la aplicación de escritorio.
-        /// </summary>
+        /// <summary>Punto de entrada de la aplicación.</summary>
         [STAThread]
         static void Main()
         {
-            // Red de seguridad global: cualquier excepción no capturada en un formulario
-            // se muestra al usuario en lugar de cerrar la aplicación de forma inesperada.
+            // Cualquier error no controlado se muestra al usuario en lugar de cerrar la aplicación
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += OnThreadException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;

@@ -6,51 +6,35 @@ using GestionNominas.Domain.Entities;
 namespace GestionNominas.Domain.Services
 {
     /// <summary>
-    /// Servicio de cálculo y generación masiva de nóminas mensuales.
-    /// Implementa todas las reglas de negocio definidas en el enunciado del proyecto.
+    /// Genera las nóminas de todos los empleados para un mes, aplicando las reglas del enunciado.
     /// </summary>
     public class PayrollCalculator
     {
-        // ─────────────────────────────────────────────────────────────────────
-        // Clase de resultado que envuelve el resultado de la operación
-        // ─────────────────────────────────────────────────────────────────────
-
         /// <summary>
-        /// Encapsula el resultado de la generación masiva de nóminas.
+        /// Resultado de una generación de nóminas.
         /// </summary>
         public class PayrollResult
         {
-            /// <summary>Indica si la operación fue exitosa.</summary>
+            /// <summary>Indica si las nóminas se han guardado.</summary>
             public bool Success { get; set; }
 
-            /// <summary>Mensaje descriptivo del resultado (éxito o motivo del fallo).</summary>
+            /// <summary>Mensaje para el usuario (resultado o motivo del fallo).</summary>
             public string Message { get; set; } = string.Empty;
 
-            /// <summary>Número de empleados para los que se generó nómina.</summary>
+            /// <summary>Número de empleados con nómina.</summary>
             public int ProcessedEmployeesCount { get; set; }
 
-            /// <summary>Lista de nóminas generadas durante la operación.</summary>
+            /// <summary>Nóminas generadas.</summary>
             public List<MonthlyPayment> GeneratedPayments { get; set; } = new List<MonthlyPayment>();
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // Método principal de generación de nóminas
-        // ─────────────────────────────────────────────────────────────────────
-
         /// <summary>
-        /// Genera todas las nóminas mensuales para el año y mes indicados.
+        /// Genera y guarda las nóminas del año y mes indicados.
+        /// Lanza una excepción si el mes no es anterior al actual o si ya se generó.
         /// </summary>
-        /// <param name="year">Año del periodo a liquidar.</param>
-        /// <param name="month">Mes del periodo a liquidar (1–12).</param>
-        /// <returns>Un <see cref="PayrollResult"/> con el detalle de la operación.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Si el mes no está entre 1 y 12.</exception>
-        /// <exception cref="InvalidOperationException">
-        ///   Si el periodo corresponde al mes actual o a un mes futuro,
-        ///   o si las nóminas del periodo ya fueron generadas previamente.
-        /// </exception>
         public PayrollResult GenerateMonthlyPayroll(int year, int month)
         {
-            // ── 1. Validación de parámetros básicos ──────────────────────────
+            // 1. Parámetros válidos
             if (month < 1 || month > 12)
                 throw new ArgumentOutOfRangeException(nameof(month),
                     "El mes debe estar comprendido entre 1 y 12.");
@@ -59,7 +43,7 @@ namespace GestionNominas.Domain.Services
                 throw new ArgumentOutOfRangeException(nameof(year),
                     $"El año '{year}' no es un valor razonable.");
 
-            // ── 2. El periodo debe ser estrictamente anterior al mes actual ──
+            // 2. Solo meses anteriores al actual
             DateTime periodStart       = new DateTime(year, month, 1);
             DateTime today             = DateTime.Today;
             DateTime currentMonthStart = new DateTime(today.Year, today.Month, 1);
@@ -69,43 +53,36 @@ namespace GestionNominas.Domain.Services
                     $"No se pueden generar nóminas para el periodo {year}/{month:D2}: " +
                     "el mes debe estar completamente cerrado (anterior al mes actual).");
 
-            // ── 3. Verificar si el periodo ya fue generado ───────────────────
+            // 3. Un mes ya generado no se vuelve a generar ni se modifica
             if (MonthlyPayment.PeriodAlreadyGenerated(year, month))
                 throw new InvalidOperationException(
                     $"Las nóminas del periodo {year}/{month:D2} ya fueron generadas. " +
                     "No se ha modificado la información existente.");
 
-            // ── 4. Variables de contexto del mes ────────────────────────────
+            // 4. Datos del mes
             int      daysInMonth     = DateTime.DaysInMonth(year, month);
             DateTime firstDayOfMonth = periodStart;
             DateTime lastDayOfMonth  = new DateTime(year, month, daysInMonth);
 
-            // ── 5. Lectura masiva de datos (evita N+1 queries) ───────────────
+            // 5. Empleados y puestos, leídos una sola vez y agrupados por empleado
             List<Employee> allEmployees = Employee.ReadAll();
             List<Position> allPositions = Position.ReadAll();
 
-            // Agrupar puestos por empleado para O(1) lookup
             Dictionary<int, List<Position>> empPositions =
                 allPositions
                     .GroupBy(p => p.Employee.IdEmployee)
                     .ToDictionary(g => g.Key, g => g.ToList());
 
-            // ── 6. Preparar resultado ────────────────────────────────────────
             PayrollResult result = new PayrollResult();
-
-            // ── 7. Cálculo de las nóminas de todos los empleados ─────────────
 
             try
             {
                 foreach (Employee employee in allEmployees)
                 {
-                    // Obtener puestos de este empleado (puede no tener ninguno)
                     if (!empPositions.TryGetValue(employee.IdEmployee, out List<Position>? positions))
                         positions = new List<Position>();
 
-                    // ── 7a. Filtrar puestos activos durante el mes ───────────
-                    // Un puesto es "activo en el mes" si empezó antes del último día
-                    // del mes Y aún no había terminado al inicio del mes.
+                    // 6. Puestos activos en el mes y días trabajados en cada uno
                     var activeWithDays = positions
                         .Where(p =>
                             p.StartDate <= lastDayOfMonth &&
@@ -118,35 +95,29 @@ namespace GestionNominas.Domain.Services
                         .Where(x => x.DaysWorked > 0)
                         .ToList();
 
-                    // Si el empleado no trabajó ningún día en el mes, se omite
+                    // Sin ningún día trabajado en el mes no hay nómina
                     if (!activeWithDays.Any())
                         continue;
 
-                    // ── 7b. Días históricos totales → Trienios ───────────────
-                    // Se acumulan días de TODOS los puestos cuya fecha de inicio
-                    // no supere el último día del mes (contratos futuros ignorados).
+                    // 7. Trienios: días trabajados en cualquier puesto hasta el último día del mes
+                    //    (los días posteriores al mes no cuentan)
                     int historicalDays = positions
                         .Where(p => p.StartDate <= lastDayOfMonth)
                         .Sum(p =>
                         {
-                            // Fecha efectiva de fin: la menor entre EndDate y lastDayOfMonth
                             DateTime effectiveEnd =
                                 (p.EndDate.HasValue && p.EndDate.Value < lastDayOfMonth)
                                 ? p.EndDate.Value
                                 : lastDayOfMonth;
 
-                            // +1 para contar el día de inicio inclusive
                             return (effectiveEnd - p.StartDate).Days + 1;
                         });
 
-                    // Trienios = bloques completos de 1095 días trabajados
                     int trienios = historicalDays / 1095;
 
-                    // ── 7c. Una nómina por cada oficina en la que trabajó en el mes ──
-                    // Criterio acordado con el profesor: si el empleado cambia de oficina,
-                    // tiene una nómina por oficina con los días trabajados en cada una.
-                    // Se insertan por orden de llegada a cada oficina: los informes
-                    // dependen de ese orden (ver MonthlyPaymentDAO.PaymentOfficeSql).
+                    // 8. Una nómina por cada oficina en la que trabajó en el mes, por orden de llegada.
+                    //    Ese orden permite saber después la oficina de cada nómina
+                    //    (ver MonthlyPaymentDAO.PaymentOfficeSql).
                     var officeGroups = activeWithDays
                         .GroupBy(x => x.Position.Office.IdOffice)
                         .OrderBy(g => g.Min(x => x.Position.StartDate));
@@ -155,18 +126,17 @@ namespace GestionNominas.Domain.Services
                     {
                         Office office = officeGroup.First().Position.Office;
 
-                        // Salario base proporcional a los días de cada puesto en esta oficina
+                        // Salario proporcional a los días de cada puesto en esta oficina
                         decimal baseSalary = officeGroup.Sum(x =>
                             (x.Position.YearSalary / 12m) *
                             ((decimal)x.DaysWorked / (decimal)daysInMonth));
 
-                        // Bonus de la oficina multiplicado por los trienios completos (en %)
+                        // Bonus de la oficina multiplicado por los trienios (en %)
                         decimal bonusRate = (decimal)trienios * office.ThreeYearBonus;
 
                         decimal gross = baseSalary * (1m + bonusRate / 100m);
                         decimal net   = gross * (1m - office.Country.TaxBase / 100m);
 
-                        // ── 7d. Preparar la nómina; se guardan todas juntas al final
                         MonthlyPayment payment = new MonthlyPayment
                         {
                             Employee     = employee,
@@ -181,7 +151,7 @@ namespace GestionNominas.Domain.Services
                     }
                 }
 
-                // ── 8. Una única sentencia INSERT: se guardan todas o ninguna ────
+                // 9. Todas las nóminas en un único INSERT: se guardan todas o ninguna
                 MonthlyPayment.InsertAll(result.GeneratedPayments);
                 result.Success                = true;
                 result.ProcessedEmployeesCount =
@@ -202,28 +172,18 @@ namespace GestionNominas.Domain.Services
             return result;
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // Métodos auxiliares privados
-        // ─────────────────────────────────────────────────────────────────────
-
         /// <summary>
-        /// Calcula los días que un puesto estuvo activo dentro de un mes concreto.
+        /// Días que el puesto estuvo activo entre el primer y el último día del mes (0 si ninguno).
         /// </summary>
-        /// <param name="position">Puesto a evaluar.</param>
-        /// <param name="firstDay">Primer día del mes.</param>
-        /// <param name="lastDay">Último día del mes.</param>
-        /// <returns>Días trabajados en el mes (0 si el puesto no solapó el mes).</returns>
         private static int CalculateDaysWorkedInMonth(
             Position position,
             DateTime firstDay,
             DateTime lastDay)
         {
-            // Inicio efectivo: el mayor entre el inicio del puesto y el primer día del mes
             DateTime effectiveStart = position.StartDate > firstDay
                 ? position.StartDate
                 : firstDay;
 
-            // Fin efectivo: el menor entre el fin del puesto (o infinito si abierto) y el último día del mes
             DateTime effectiveEnd =
                 (!position.EndDate.HasValue || position.EndDate.Value > lastDay)
                 ? lastDay

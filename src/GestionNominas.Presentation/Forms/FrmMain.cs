@@ -15,7 +15,7 @@ namespace GestionNominas.Presentation.Forms
 
         private void FrmMain_Load(object sender, EventArgs e)
         {
-            // Requisito del PDF: "Al iniciar la aplicación, el sistema se conectará automáticamente a la base de datos (BD)"
+            // Conexión automática con la base de datos al iniciar la aplicación
             CheckDatabaseConnection();
         }
 

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Capas de dominio (carpeta Domain) y persistencia (carpeta Persistence).
+    Van en el mismo proyecto porque cada entidad usa su DAO y cada DAO construye
+    objetos de su entidad. AgenteBD y los DAO son internal: la presentación no los ve.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GestionNominas</RootNamespace>
+    <!-- Aviso de nulabilidad en AgenteBD, que se usa sin modificar -->
+    <NoWarn>$(NoWarn);CS8601</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MySql.Data" Version="26.10.0" />
+  </ItemGroup>
+
+</Project>

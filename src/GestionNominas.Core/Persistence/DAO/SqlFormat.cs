@@ -4,8 +4,8 @@ using System.Globalization;
 namespace Company.persistence
 {
     /// <summary>
-    /// Escribe valores dentro de las sentencias SQL que reciben los DAO.
-    /// AgenteBD solo acepta texto SQL (sin parámetros), así que los valores se escapan aquí.
+    /// Conversión de valores entre los DAO y AgenteBD, que solo acepta SQL en texto
+    /// (sin parámetros) y devuelve cada valor como texto.
     /// </summary>
     internal static class SqlFormat
     {
@@ -23,10 +23,17 @@ namespace Company.persistence
         /// <summary>Fecha o NULL si no tiene valor.</summary>
         public static string SqlDateOrNull(DateTime? value) => value.HasValue ? SqlDate(value.Value) : "NULL";
 
-        /// <summary>
-        /// Lee el resultado de un SELECT COUNT(*). AgenteBD devuelve los valores con ToString(),
-        /// que usa el formato regional actual.
-        /// </summary>
-        public static int ReadCount(string value) => (int)decimal.Parse(value, CultureInfo.CurrentCulture);
+        /// <summary>Número leído de AgenteBD, que lo devuelve en el formato regional de Windows.</summary>
+        public static decimal ReadDecimal(string value) => decimal.Parse(value, CultureInfo.CurrentCulture);
+
+        /// <summary>Número entero leído de AgenteBD.</summary>
+        public static int ReadInt(string value) => (int)ReadDecimal(value);
+
+        /// <summary>Fecha leída de AgenteBD.</summary>
+        public static DateTime ReadDate(string value) => DateTime.Parse(value, CultureInfo.CurrentCulture);
+
+        /// <summary>Fecha o null: un NULL de la base de datos llega como texto vacío.</summary>
+        public static DateTime? ReadDateOrNull(string value) =>
+            string.IsNullOrEmpty(value) ? null : ReadDate(value);
     }
 }

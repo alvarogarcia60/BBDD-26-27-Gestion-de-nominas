@@ -8,8 +8,7 @@ using GestionNominas.Domain.Services;
 namespace GestionNominas.Presentation.Forms
 {
     /// <summary>
-    /// Formulario de Generación y Consulta de Nóminas Mensuales.
-    /// Invoca <see cref="PayrollCalculator.GenerateMonthlyPayroll"/> y muestra el resultado.
+    /// Generación y consulta de las nóminas de un mes.
     /// </summary>
     public class FrmMonthlyPayments : Form
     {
@@ -21,17 +20,13 @@ namespace GestionNominas.Presentation.Forms
         private Label         lblSummary     = null!;
         private Panel         panelTop       = null!;
 
-        // ────────────────────────────────────────────────────────────────────
-
         public FrmMonthlyPayments()
         {
             InitializeComponentManual();
             SetDefaultPeriod();
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Construcción de la interfaz
-        // ────────────────────────────────────────────────────────────────────
 
         private void InitializeComponentManual()
         {
@@ -49,7 +44,7 @@ namespace GestionNominas.Presentation.Forms
                 Padding   = new Padding(15, 12, 15, 0)
             };
 
-            // ── Selectores de periodo ──────────────────────────────────────
+            // Selectores de periodo
             var lblYear = new Label
             {
                 Text = "Año:", Location = new Point(15, 22), AutoSize = true,
@@ -78,7 +73,7 @@ namespace GestionNominas.Presentation.Forms
                 "09 - Septiembre","10 - Octubre",   "11 - Noviembre","12 - Diciembre"
             });
 
-            // ── Botones ───────────────────────────────────────────────────
+            // Botones
             btnGenerate = new Button
             {
                 Text      = "⚡  Generar Nóminas del Periodo",
@@ -100,7 +95,7 @@ namespace GestionNominas.Presentation.Forms
             };
             btnConsult.Click += (s, e) => LoadPayments();
 
-            // ── Etiqueta de resumen ───────────────────────────────────────
+            // Etiqueta de resumen
             lblSummary = new Label
             {
                 Text      = "Seleccione un mes anterior al mes actual para generar o consultar las nóminas.",
@@ -116,7 +111,7 @@ namespace GestionNominas.Presentation.Forms
                 btnGenerate, btnConsult, lblSummary
             });
 
-            // ── DataGridView ──────────────────────────────────────────────
+            // Tabla de nóminas
             dgvPayments = new DataGridView
             {
                 Dock                = DockStyle.Fill,
@@ -136,9 +131,7 @@ namespace GestionNominas.Presentation.Forms
             UiTheme.Apply(this, "Nóminas mensuales", "Generación y consulta de las nóminas de cada periodo");
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Inicialización
-        // ────────────────────────────────────────────────────────────────────
 
         private void SetDefaultPeriod()
         {
@@ -148,16 +141,14 @@ namespace GestionNominas.Presentation.Forms
             cmbMonth.SelectedIndex  = prev.Month - 1;
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Generar nóminas
-        // ────────────────────────────────────────────────────────────────────
 
         private void BtnGenerate_Click(object? sender, EventArgs e)
         {
             int year  = (int)numYear.Value;
             int month = cmbMonth.SelectedIndex + 1;
 
-            // Confirmación antes de lanzar el proceso masivo
+            // Confirmación antes de generar
             var confirm = MessageBox.Show(
                 $"¿Desea generar las nóminas para el periodo {year}-{month:D2}?\n\n" +
                 "Esta acción insertará una nómina por cada empleado activo en ese mes y por cada oficina en la que haya trabajado. " +
@@ -184,7 +175,7 @@ namespace GestionNominas.Presentation.Forms
                 }
                 else
                 {
-                    // PayrollResult.Success = false → problema no crítico capturado dentro del servicio
+                    // La generación ha fallado y no se ha guardado ninguna nómina
                     MessageBox.Show(result.Message, "Aviso de Generación",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
@@ -198,22 +189,20 @@ namespace GestionNominas.Presentation.Forms
             }
             catch (InvalidOperationException ex)
             {
-                // Período ya generado o mes no cerrado → lógica de negocio
+                // Mes ya generado o todavía no cerrado
                 MessageBox.Show(ex.Message, "Operación No Permitida",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
-                // Error inesperado (BD, red, etc.)
+                // Error inesperado (por ejemplo, de conexión)
                 MessageBox.Show(
                     $"Error inesperado al generar las nóminas:\n{ex.Message}",
                     "Error del Sistema", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Consultar nóminas existentes
-        // ────────────────────────────────────────────────────────────────────
 
         private void LoadPayments()
         {
@@ -224,7 +213,7 @@ namespace GestionNominas.Presentation.Forms
 
                 var payments = MonthlyPayment.ReadByPeriod(year, month);
 
-                // Construir tabla con columnas legibles
+                // Tabla con columnas legibles
                 var table = new System.Data.DataTable();
                 table.Columns.Add("ID",              typeof(int));
                 table.Columns.Add("Empleado",        typeof(string));
@@ -269,9 +258,7 @@ namespace GestionNominas.Presentation.Forms
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         // Utilidades
-        // ────────────────────────────────────────────────────────────────────
 
         private void UpdateSummary(int year, int month, int count, decimal gross, decimal net)
         {

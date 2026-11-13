@@ -41,7 +41,7 @@ namespace GestionNominas.Presentation.Forms
             };
 
             var lblId = new Label { Text = "Código País (3 letras):", Location = new Point(20, 20), AutoSize = true };
-            // El código no se escribe a mano: se genera siempre a partir del nombre (regla del enunciado)
+            // El código no se escribe a mano: se genera a partir del nombre
             txtIdCountry = new TextBox { Location = new Point(160, 17), Width = 80, MaxLength = 3, ReadOnly = true, PlaceholderText = "Auto" };
 
             btnAutoCode = new Button { Text = "Ver Código", Location = new Point(250, 16), Width = 110, Height = 25 };
@@ -95,9 +95,7 @@ namespace GestionNominas.Presentation.Forms
                 ReadOnly = true,
                 AllowUserToAddRows = false
             };
-            // El formulario solo pasa a modo edición cuando el usuario hace clic en una fila.
-            // (La selección automática de la primera fila al cargar la lista NO carga datos,
-            //  para evitar sobrescribir un registro existente al intentar dar de alta uno nuevo.)
+            // Solo se pasa a modo edición al hacer clic en una fila, para no sobrescribir un registro al dar de alta otro.
             dgvCountries.CellClick += (s, e) => { if (e.RowIndex >= 0) DgvCountries_SelectionChanged(s, e); };
             dgvCountries.DataBindingComplete += (s, e) => ClearForm();
             Shown += (s, e) => ClearForm();
@@ -149,7 +147,7 @@ namespace GestionNominas.Presentation.Forms
                 }
                 else
                 {
-                    // Alta: código vacío para que el dominio lo genere según la regla del enunciado
+                    // Alta: código vacío para que el dominio lo genere
                     var country = new Country(string.Empty, name, tax);
                     success = country.Insert();
                     if (success)
